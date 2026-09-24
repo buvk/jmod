@@ -14,6 +14,7 @@ static DWORD game_thread;
 static BYTE held[256];
 static BYTE show_key_down[256];
 static int was_focused;
+static int rbutton_already_down;
 static volatile unsigned held_count;
 static volatile LONG item_labels_on;
 static DWORD last_gold_at;
@@ -241,7 +242,8 @@ static void release_all(void)
     ZeroMemory(held, sizeof(held));
     if (held_count) {
         held_count = 0;
-        mouse_button(MOUSEEVENTF_RIGHTUP);
+        if (!rbutton_already_down)
+            mouse_button(MOUSEEVENTF_RIGHTUP);
     }
 }
 
@@ -273,7 +275,7 @@ static LRESULT CALLBACK on_message(int code, WPARAM removed, LPARAM value)
     if (msg->message == QC_MESSAGE && msg->hwnd == game_window) {
         if (msg->wParam == 1 && held_count && GetForegroundWindow() == game_window)
             mouse_button(MOUSEEVENTF_RIGHTDOWN);
-        else if (msg->wParam == 2)
+        else if (msg->wParam == 2 && !rbutton_already_down)
             mouse_button(MOUSEEVENTF_RIGHTUP);
         msg->message = WM_NULL;
         return CallNextHookEx(message_hook, code, removed, value);
@@ -307,8 +309,10 @@ static LRESULT CALLBACK on_message(int code, WPARAM removed, LPARAM value)
         msg->hwnd == game_window && GetForegroundWindow() == game_window) {
         if (config.quick_cast && !held[key] && is_skill_key(key)) {
             held[key] = 1;
-            if (++held_count == 1)
+            if (++held_count == 1) {
+                rbutton_already_down = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
                 PostMessageA(game_window, QC_MESSAGE, 1, 0);
+            }
         }
     } else if (msg->message == WM_KEYUP || msg->message == WM_SYSKEYUP) {
         if (held[key]) {
