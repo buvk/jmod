@@ -23,6 +23,7 @@ void read_options(HMODULE module, D2ModConfig *config)
     config->quick_cast = GetPrivateProfileIntA("Mods", "QuickCast", 1, path) != 0;
     config->always_show_items = GetPrivateProfileIntA("Mods", "AlwaysShowItems", 1, path) != 0;
     config->auto_gold_pickup = GetPrivateProfileIntA("Mods", "AutoGoldPickup", 1, path) != 0;
+    config->gold_pickup_in_town = GetPrivateProfileIntA("Mods", "GoldPickupInTown", 0, path) != 0;
     config->gold_pickup_range = GetPrivateProfileIntA("Mods", "GoldPickupRange", 4, path);
     if (config->gold_pickup_range < 1)
         config->gold_pickup_range = 1;

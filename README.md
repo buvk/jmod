@@ -28,6 +28,7 @@ The bundled `jmod.ini` is intentionally all-on by default:
 QuickCast=1
 AlwaysShowItems=1
 AutoGoldPickup=1
+GoldPickupInTown=0
 GoldPickupRange=4
 GoldScanIntervalMs=30
 GoldRequestIntervalMs=50
@@ -41,6 +42,7 @@ Meaning of the settings:
   Ground labels are drawn before the hover tooltip pass so inventory and
   equipment item stats can appear over labels.
 - `AutoGoldPickup=1`: requests pickup of nearby gold piles.
+- `GoldPickupInTown=0`: skips automatic gold pickup in the five towns; set to `1` to allow it.
 - `GoldPickupRange`: radius in map tiles, clamped to 1–6.
 - `GoldScanIntervalMs`, `GoldRequestIntervalMs`, `GoldRetryIntervalMs`: timing controls for gold scanning and pickup requests.
 

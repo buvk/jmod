@@ -14,18 +14,24 @@ static void pick_up_nearby_gold(void)
     HMODULE common = GetModuleHandleA("D2Common.dll");
     HMODULE net = GetModuleHandleA("D2Net.dll");
     typedef int (__stdcall *unit_coord_fn)(const void *);
+    typedef const void *(__stdcall *unit_room_fn)(const void *);
+    typedef DWORD (__stdcall *room_level_fn)(const void *);
     typedef const BYTE *(__stdcall *item_text_fn)(DWORD);
     typedef void (__stdcall *send_packet_fn)(DWORD, const BYTE *, DWORD);
     unit_coord_fn unit_x, unit_y;
+    unit_room_fn unit_room;
+    room_level_fn room_level;
     item_text_fn item_text;
     send_packet_fn send_packet;
     union { FARPROC raw; item_text_fn typed; } item_text_export;
     union { FARPROC raw; send_packet_fn typed; } send_packet_export;
+    union { FARPROC raw; unit_room_fn typed; } unit_room_export;
+    union { FARPROC raw; room_level_fn typed; } room_level_export;
     const BYTE *player;
     const BYTE *item;
     const BYTE *record;
     BYTE packet[13];
-    DWORD id, now;
+    DWORD id, now, level;
     int x, y, ix, iy;
     unsigned bucket, visited, slot;
     const BYTE *const *items;
@@ -36,6 +42,21 @@ static void pick_up_nearby_gold(void)
     if (!player || *(const DWORD *)player != 0 ||
         !*(const void *const *)(player + 0x38))
         return;
+
+    if (!config->gold_pickup_in_town) {
+        const void *room;
+        /* D2Common 1.09b: GetRoom(Unit*) and GetLevelID(Room*). */
+        unit_room_export.raw = GetProcAddress(common, MAKEINTRESOURCEA(10342));
+        room_level_export.raw = GetProcAddress(common, MAKEINTRESOURCEA(10057));
+        unit_room = unit_room_export.typed;
+        room_level = room_level_export.typed;
+        if (!unit_room || !room_level || !(room = unit_room(player)))
+            return;
+        level = room_level(room);
+        if (level == 0 || level == 1 || level == 40 || level == 75 ||
+            level == 103 || level == 109)
+            return;
+    }
 
     unit_x = (unit_coord_fn)GetProcAddress(common, MAKEINTRESOURCEA(10327));
     unit_y = (unit_coord_fn)GetProcAddress(common, MAKEINTRESOURCEA(10330));
