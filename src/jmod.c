@@ -6,6 +6,7 @@
 
 #define QC_MESSAGE (WM_APP + 0x310)
 #define PICKUP_GOLD_MESSAGE (WM_APP + 0x313)
+#define RBUTTON_INJECT_MARK ((ULONG_PTR)0x6a6d6f64)
 
 static HMODULE module;
 static HHOOK message_hook;
@@ -14,7 +15,7 @@ static DWORD game_thread;
 static BYTE held[256];
 static BYTE show_key_down[256];
 static int was_focused;
-static int rbutton_already_down;
+static int real_rbutton_down;
 static volatile unsigned held_count;
 static volatile LONG item_labels_on;
 static DWORD last_gold_at;
@@ -234,6 +235,7 @@ static void mouse_button(DWORD flag)
     ZeroMemory(&input, sizeof(input));
     input.type = INPUT_MOUSE;
     input.mi.dwFlags = flag;
+    input.mi.dwExtraInfo = RBUTTON_INJECT_MARK;
     SendInput(1, &input, sizeof(input));
 }
 
@@ -242,7 +244,7 @@ static void release_all(void)
     ZeroMemory(held, sizeof(held));
     if (held_count) {
         held_count = 0;
-        if (!rbutton_already_down)
+        if (!real_rbutton_down)
             mouse_button(MOUSEEVENTF_RIGHTUP);
     }
 }
@@ -256,6 +258,16 @@ static LRESULT CALLBACK on_message(int code, WPARAM removed, LPARAM value)
         return CallNextHookEx(message_hook, code, removed, value);
 
     msg = (MSG *)value;
+    if (msg->hwnd == game_window &&
+        (msg->message == WM_RBUTTONDOWN || msg->message == WM_RBUTTONUP) &&
+        GetMessageExtraInfo() != RBUTTON_INJECT_MARK) {
+        /* a genuine click, not one we synthesized: track it so releasing
+           the skill key never steals control of it, and if the user lets
+           go while a skill key is still held, keep quick-cast's hold alive */
+        real_rbutton_down = (msg->message == WM_RBUTTONDOWN);
+        if (!real_rbutton_down && held_count && GetForegroundWindow() == game_window)
+            mouse_button(MOUSEEVENTF_RIGHTDOWN);
+    }
     if (config.always_show_items && item_labels_on && msg->hwnd == game_window &&
         msg->message == WM_LBUTTONDOWN &&
         GetForegroundWindow() == game_window) {
@@ -275,7 +287,7 @@ static LRESULT CALLBACK on_message(int code, WPARAM removed, LPARAM value)
     if (msg->message == QC_MESSAGE && msg->hwnd == game_window) {
         if (msg->wParam == 1 && held_count && GetForegroundWindow() == game_window)
             mouse_button(MOUSEEVENTF_RIGHTDOWN);
-        else if (msg->wParam == 2 && !rbutton_already_down)
+        else if (msg->wParam == 2 && !real_rbutton_down)
             mouse_button(MOUSEEVENTF_RIGHTUP);
         msg->message = WM_NULL;
         return CallNextHookEx(message_hook, code, removed, value);
@@ -310,7 +322,7 @@ static LRESULT CALLBACK on_message(int code, WPARAM removed, LPARAM value)
         if (config.quick_cast && !held[key] && is_skill_key(key)) {
             held[key] = 1;
             if (++held_count == 1) {
-                rbutton_already_down = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
+                real_rbutton_down = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
                 PostMessageA(game_window, QC_MESSAGE, 1, 0);
             }
         }
