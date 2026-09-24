@@ -5,6 +5,7 @@
 #include "item_labels.h"
 #include "quick_cast.h"
 #include "auto_gold.h"
+#include "game_ui.h"
 
 static HMODULE module;
 static HHOOK message_hook;
@@ -52,7 +53,21 @@ static BOOL CALLBACK find_window(HWND hwnd, LPARAM value)
 
 static DWORD WINAPI start_hook(void *unused)
 {
+    char singleton_name[64];
+    HANDLE singleton_mutex;
+    DWORD mutex_error;
     (void)unused;
+    /* The proxy and PlugY variants share this process. Only one may hook it. */
+    wsprintfA(singleton_name, "Local\\jmod_%08lX",
+              (unsigned long)GetCurrentProcessId());
+    singleton_mutex = CreateMutexA(NULL, FALSE, singleton_name);
+    if (!singleton_mutex)
+        return 0;
+    mutex_error = GetLastError();
+    if (mutex_error == ERROR_ALREADY_EXISTS) {
+        CloseHandle(singleton_mutex);
+        return 0;
+    }
     while (!GetModuleHandleA("D2Client.dll")) Sleep(100);
     read_options(module, &config);
     quick_cast_init(config.quick_cast);
@@ -82,10 +97,14 @@ static DWORD WINAPI start_hook(void *unused)
         focused = (GetForegroundWindow() == game_window);
         if (config.always_show_items && focused && !was_focused)
             item_labels_resync_keys();
+        if (focused && !was_focused)
+            quick_cast_resync_keys();
         was_focused = focused;
         auto_gold_poll(found, message_hook != NULL);
         if (!focused)
             quick_cast_release_all();
+        else if (game_menu_open())
+            quick_cast_pause();
         Sleep(config.auto_gold_pickup ? config.gold_scan_interval_ms : 100);
     }
     return 0;

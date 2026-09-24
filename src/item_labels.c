@@ -1,16 +1,11 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include "item_labels.h"
+#include "game_ui.h"
 
 static BYTE show_key_down[256];
 static CRITICAL_SECTION labels_lock;
 static volatile LONG item_labels_on;
-
-static int is_game_menu_open(const BYTE *client)
-{
-    /* The Escape menu's UI state in the supported D2Client 1.09b build. */
-    return *(const DWORD *)(client + 0x125a58) != 0;
-}
 
 static int is_interactive_target(DWORD type)
 {
@@ -68,7 +63,7 @@ static void __fastcall draw_labels_before_tooltip(void *selected)
     typedef int (__cdecl *mode_getter_fn)(void);
     /* vanilla skips label drawing entirely in game-state 3; preserve that
        guard here since it no longer runs through the original gated site */
-    if (item_labels_on && is_game_menu_open(client))
+    if (item_labels_on && game_menu_open())
         return;
     if (item_labels_on && ((mode_getter_fn)(client + 0x14a20))() != 3) {
         draw_item_labels();
@@ -150,7 +145,7 @@ int item_labels_on_message(MSG *msg, HWND game_window)
         msg->message == WM_LBUTTONDOWN &&
         GetForegroundWindow() == game_window) {
         BYTE *client = (BYTE *)GetModuleHandleA("D2Client.dll");
-        if (client && !is_game_menu_open(client) &&
+        if (client && !game_menu_open() &&
             *(DWORD *)(client + 0x116dd0) &&
             is_interactive_target(*(DWORD *)(client + 0x116db8)))
             refresh_object_target(client);
@@ -158,7 +153,7 @@ int item_labels_on_message(MSG *msg, HWND game_window)
     if (key >= 256 || msg->hwnd != game_window || !is_show_items_key(key))
         return 0;
     if (msg->message == WM_KEYDOWN || msg->message == WM_SYSKEYDOWN) {
-        if (is_game_menu_open((const BYTE *)GetModuleHandleA("D2Client.dll"))) {
+        if (game_menu_open()) {
             /* Remember a press made in the menu so a repeat after closing
                it cannot toggle the labels without a fresh key press. */
             EnterCriticalSection(&labels_lock);
