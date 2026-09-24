@@ -1,0 +1,24 @@
+# Build outputs
+*.dll
+*.exe
+*.zip
+*.bundle
+*.o
+*.obj
+*.lib
+*.exp
+*.res
+
+# Toolchain and generated files
+build/*.dll
+build/*.exe
+build/*.o
+build/*.obj
+
+# Editor and OS files
+.vscode/
+.idea/
+*.swp
+*.swo
+Thumbs.db
+.DS_Store
