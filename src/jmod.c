@@ -326,18 +326,25 @@ static LRESULT CALLBACK on_message(int code, WPARAM removed, LPARAM value)
         if (msg->message == WM_KEYDOWN || msg->message == WM_SYSKEYDOWN) {
             if (GetForegroundWindow() == game_window &&
                 *(const void *const *)((BYTE *)GetModuleHandleA("D2Client.dll") + 0x127578)) {
+                EnterCriticalSection(&input_lock);
                 if (!show_key_down[key]) {
                     show_key_down[key] = 1;
                     InterlockedExchange(&item_labels_on, !item_labels_on);
                 }
+                LeaveCriticalSection(&input_lock);
                 msg->message = WM_NULL;
                 return CallNextHookEx(message_hook, code, removed, value);
             }
-        } else if ((msg->message == WM_KEYUP || msg->message == WM_SYSKEYUP) &&
-                   show_key_down[key]) {
+        } else if (msg->message == WM_KEYUP || msg->message == WM_SYSKEYUP) {
+            int was_down;
+            EnterCriticalSection(&input_lock);
+            was_down = show_key_down[key];
             show_key_down[key] = 0;
-            msg->message = WM_NULL;
-            return CallNextHookEx(message_hook, code, removed, value);
+            LeaveCriticalSection(&input_lock);
+            if (was_down) {
+                msg->message = WM_NULL;
+                return CallNextHookEx(message_hook, code, removed, value);
+            }
         }
     }
 
@@ -419,8 +426,10 @@ static DWORD WINAPI start_hook(void *unused)
                or a still-held Show Items key (e.g. mid Alt-Tab) would look
                like a fresh press and toggle labels again on return */
             unsigned key;
+            EnterCriticalSection(&input_lock);
             for (key = 0; key < 256; ++key)
                 show_key_down[key] = (GetAsyncKeyState((int)key) & 0x8000) != 0;
+            LeaveCriticalSection(&input_lock);
         }
         was_focused = focused;
         if (config.auto_gold_pickup && message_hook && found &&
