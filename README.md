@@ -38,6 +38,9 @@ Meaning of the settings:
 
 - `QuickCast=1`: holds the right mouse button while a bound skill key is held.
 - `AlwaysShowItems=1`: makes the normal Show Items binding toggle labels on and off.
+  Note: while toggled on, vanilla suppresses the inventory/equipment hover
+  tooltip (this is how the game ties ground-item labels and the hover
+  tooltip to the same flag). Toggle labels off again to see item stats.
 - `AutoGoldPickup=1`: requests pickup of nearby gold piles.
 - `GoldPickupRange`: radius in map tiles, clamped to 1–6.
 - `GoldScanIntervalMs`, `GoldRequestIntervalMs`, `GoldRetryIntervalMs`: timing controls for gold scanning and pickup requests.
