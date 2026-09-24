@@ -246,8 +246,9 @@ static void release_all(void)
 {
     EnterCriticalSection(&input_lock);
     ZeroMemory(held, sizeof(held));
+    if (held_count || injected_rbutton_down)
+        ++qc_generation; /* cancel commands queued for the old hold */
     held_count = 0;
-    ++qc_generation; /* cancel queued commands, including an unprocessed up */
     if (injected_rbutton_down && !real_rbutton_down)
         mouse_button(MOUSEEVENTF_RIGHTUP);
     injected_rbutton_down = 0;
@@ -290,7 +291,7 @@ static LRESULT CALLBACK on_message(int code, WPARAM removed, LPARAM value)
             refresh_object_target(client);
     }
     if (msg->message == PICKUP_GOLD_MESSAGE) {
-        /* always clear pending: game_window can race to NULL on the polling thread */
+        /* Always clear pending, even if the selected game window changed. */
         InterlockedExchange(&gold_message_pending, 0);
         if (msg->hwnd == game_window && GetForegroundWindow() == msg->hwnd)
             pick_up_nearby_gold();
@@ -364,15 +365,20 @@ static LRESULT CALLBACK on_message(int code, WPARAM removed, LPARAM value)
     return CallNextHookEx(message_hook, code, removed, value);
 }
 
-static BOOL CALLBACK find_window(HWND hwnd, LPARAM unused)
+typedef struct GameWindowMatch {
+    HWND window;
+    DWORD thread;
+} GameWindowMatch;
+
+static BOOL CALLBACK find_window(HWND hwnd, LPARAM value)
 {
+    GameWindowMatch *match = (GameWindowMatch *)value;
     DWORD process;
     DWORD thread = GetWindowThreadProcessId(hwnd, &process);
-    (void)unused;
     if (process == GetCurrentProcessId() && IsWindowVisible(hwnd) &&
         GetWindow(hwnd, GW_OWNER) == NULL) {
-        game_window = hwnd;
-        game_thread = thread;
+        match->window = hwnd;
+        match->thread = thread;
         return FALSE;
     }
     return TRUE;
@@ -387,22 +393,23 @@ static DWORD WINAPI start_hook(void *unused)
     if (config.always_show_items && !install_item_label_toggle())
         config.always_show_items = 0;
     for (;;) {
+        GameWindowMatch match = { NULL, 0 };
         HWND found;
         DWORD thread;
         int focused;
-        game_window = NULL;
-        game_thread = 0;
-        EnumWindows(find_window, 0);
-        found = game_window;
-        thread = game_thread;
+        EnumWindows(find_window, (LPARAM)&match);
+        found = match.window;
+        thread = match.thread;
 
-        if (message_hook && (!found || !IsWindow(found) ||
-                             thread != GetWindowThreadProcessId(found, NULL))) {
+        if (message_hook && (!found || found != game_window ||
+                             thread != game_thread || !IsWindow(found))) {
             release_all();
             UnhookWindowsHookEx(message_hook);
             message_hook = NULL;
             InterlockedExchange(&gold_message_pending, 0);
         }
+        game_window = found;
+        game_thread = thread;
         if (!message_hook && found && thread)
             message_hook = SetWindowsHookExA(WH_GETMESSAGE, on_message, module, thread);
         focused = (GetForegroundWindow() == game_window);
@@ -421,7 +428,7 @@ static DWORD WINAPI start_hook(void *unused)
             InterlockedCompareExchange(&gold_message_pending, 1, 0) == 0 &&
             !PostMessageA(found, PICKUP_GOLD_MESSAGE, 0, 0))
             InterlockedExchange(&gold_message_pending, 0);
-        if (held_count && GetForegroundWindow() != game_window)
+        if (!focused)
             release_all();
         Sleep(config.auto_gold_pickup ? config.gold_scan_interval_ms : 100);
     }
