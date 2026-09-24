@@ -38,6 +38,23 @@ static void __cdecl draw_item_labels(void)
     }
 }
 
+/* D2Client's label renderer stores the ground units it drew in this list.
+   A selected unit in that list already has its hovered ground label. */
+static int ground_label_contains(BYTE *client, const void *selected)
+{
+    DWORD count = *(const DWORD *)(client + 0x124890);
+    DWORD i;
+    const BYTE *labels = client + 0x122490;
+    if (!selected || *(const DWORD *)selected != 4)
+        return 0;
+    if (count > 32)
+        count = 32;
+    for (i = 0; i < count; ++i)
+        if (*(const void *const *)(labels + i * 0x120 + 0x10) == selected)
+            return 1;
+    return 0;
+}
+
 static void __fastcall draw_labels_before_tooltip(void *selected)
 {
     BYTE *client = (BYTE *)GetModuleHandleA("D2Client.dll");
@@ -45,8 +62,11 @@ static void __fastcall draw_labels_before_tooltip(void *selected)
     typedef int (__cdecl *mode_getter_fn)(void);
     /* vanilla skips label drawing entirely in game-state 3; preserve that
        guard here since it no longer runs through the original gated site */
-    if (item_labels_on && ((mode_getter_fn)(client + 0x14a20))() != 3)
+    if (item_labels_on && ((mode_getter_fn)(client + 0x14a20))() != 3) {
         draw_item_labels();
+        if (ground_label_contains(client, selected))
+            return;
+    }
     ((draw_hover_fn)(client + 0x861c0))(selected);
 }
 
