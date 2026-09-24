@@ -52,6 +52,22 @@ static void __cdecl draw_item_labels(void)
     }
 }
 
+static void __fastcall draw_labels_before_tooltip(void *selected)
+{
+    BYTE *client = (BYTE *)GetModuleHandleA("D2Client.dll");
+    typedef void (__fastcall *draw_hover_fn)(void *);
+    if (item_labels_on)
+        draw_item_labels();
+    ((draw_hover_fn)(client + 0x861c0))(selected);
+}
+
+/* the flag-gated draw_call site now no-ops: labels are drawn from the
+   always-runs tooltip call site instead, so the tooltip never gets starved
+   by the label toggle */
+static void __cdecl labels_already_drawn(void)
+{
+}
+
 static void pick_up_nearby_gold(void)
 {
     BYTE *client = (BYTE *)GetModuleHandleA("D2Client.dll");
@@ -134,15 +150,19 @@ static void pick_up_nearby_gold(void)
 static int install_item_label_toggle(void)
 {
     BYTE *client = (BYTE *)GetModuleHandleA("D2Client.dll");
-    BYTE *render, *draw_call;
-    DWORD expected, old_render, old_call, unused;
+    BYTE *render, *draw_call, *tooltip_call;
+    DWORD expected, old_render, old_call, old_tooltip, unused;
     if (!client) return 0;
     render = client + 0x877d2;
     draw_call = client + 0x877e5;
+    tooltip_call = client + 0x872a5;
     expected = (DWORD)(client + 0x125a68);
     if (render[0] != 0xa1 || *(DWORD *)(render + 1) != expected ||
         draw_call[0] != 0xe8 ||
-        *(DWORD *)(draw_call + 1) != (DWORD)(client + 0x63b60 - (draw_call + 5)))
+        *(DWORD *)(draw_call + 1) != (DWORD)(client + 0x63b60 - (draw_call + 5)) ||
+        tooltip_call[0] != 0xe8 ||
+        *(DWORD *)(tooltip_call + 1) !=
+            (DWORD)(client + 0x861c0 - (tooltip_call + 5)))
         return 0;
     if (!VirtualProtect(render, 5, PAGE_EXECUTE_READWRITE, &old_render))
         return 0;
@@ -150,10 +170,19 @@ static int install_item_label_toggle(void)
         VirtualProtect(render, 5, old_render, &unused);
         return 0;
     }
+    if (!VirtualProtect(tooltip_call, 5, PAGE_EXECUTE_READWRITE, &old_tooltip)) {
+        VirtualProtect(draw_call, 5, old_call, &unused);
+        VirtualProtect(render, 5, old_render, &unused);
+        return 0;
+    }
     *(DWORD *)(render + 1) = (DWORD)&item_labels_on;
-    *(DWORD *)(draw_call + 1) = (DWORD)((BYTE *)draw_item_labels - (draw_call + 5));
+    *(DWORD *)(draw_call + 1) = (DWORD)((BYTE *)labels_already_drawn - (draw_call + 5));
+    *(DWORD *)(tooltip_call + 1) =
+        (DWORD)((BYTE *)draw_labels_before_tooltip - (tooltip_call + 5));
     FlushInstructionCache(GetCurrentProcess(), render, 5);
     FlushInstructionCache(GetCurrentProcess(), draw_call, 5);
+    FlushInstructionCache(GetCurrentProcess(), tooltip_call, 5);
+    VirtualProtect(tooltip_call, 5, old_tooltip, &unused);
     VirtualProtect(draw_call, 5, old_call, &unused);
     VirtualProtect(render, 5, old_render, &unused);
     return 1;
