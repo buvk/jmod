@@ -1,10 +1,11 @@
 # jmod (juice mod) for Diablo II 1.09b
 
-`jmod` patches a specific Diablo II 1.09b install with three small gameplay helpers:
+`jmod` patches a specific Diablo II 1.09b install with four helpers:
 
 - Quick Cast for keyboard-bound skills
 - Toggleable item labels via the in-game Show Items binding
 - Automatic gold pickup near the character
+- Optional orange rune names (no MPQ replacement or `-direct -txt` needed)
 
 The code is split into a small modular layout under `src/` and builds both DLL variants from the same source files.
 
@@ -23,7 +24,7 @@ Both variants read `jmod.ini` from the same folder as the DLL.
 
 ## Default configuration
 
-The bundled `jmod.ini` is intentionally all-on by default:
+The bundled `jmod.ini` enables all four helpers by default:
 
 ```ini
 [Mods]
@@ -31,6 +32,7 @@ QuickCast=1
 AlwaysShowItems=1
 AutoGoldPickup=1
 GoldPickupInTown=0
+RuneColor=1
 GoldPickupRange=4
 GoldScanIntervalMs=30
 GoldRequestIntervalMs=50
@@ -49,6 +51,12 @@ Meaning of the settings:
 - `AutoGoldPickup=1`: requests pickup of nearby gold piles while the game is
   focused and the Escape menu is closed.
 - `GoldPickupInTown=0`: skips automatic gold pickup in the five towns; set to `1` to allow it.
+- `RuneColor=1`: displays English rune names in orange through the game's
+  string lookup. Set it to `0` to leave the original names unchanged. This option
+  checks each rune name against the supplied 1.09b strings before coloring it;
+  names that differ keep their original color.
+  Remove any previously installed orange-rune `.tbl` overrides before testing
+  this option, to avoid coloring the names twice.
 - `GoldPickupRange`: radius in map tiles, clamped to 1–6.
 - `GoldScanIntervalMs`, `GoldRequestIntervalMs`, `GoldRetryIntervalMs`: timing controls for gold scanning and pickup requests.
 
@@ -106,7 +114,8 @@ The output is placed under `build/` and the repository is configured to ignore g
 │   ├── game_ui.h          # Escape menu state
 │   ├── item_labels.c/.h   # item label toggle and drawing
 │   ├── jmod.c             # DLL startup, window discovery, message hook
-│   └── quick_cast.c/.h    # skill key handling and simulated mouse input
+│   ├── quick_cast.c/.h    # skill key handling and simulated mouse input
+│   └── rune_color.c/.h    # optional rune name color
 ├── jmod.ini               # default runtime settings
 ├── D2Win.def              # export definition file for the proxy build
 ├── Makefile               # build rules

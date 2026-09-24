@@ -4,7 +4,7 @@ CC ?= i686-w64-mingw32-gcc
 CPPFLAGS ?= -Isrc
 CFLAGS ?= -std=c11 -O2 -Wall -Wextra
 LIBS = -luser32
-SRC = src/jmod.c src/config.c src/item_labels.c src/quick_cast.c src/auto_gold.c
+SRC = src/jmod.c src/config.c src/item_labels.c src/quick_cast.c src/auto_gold.c src/rune_color.c
 OUTDIR = build
 
 .PHONY: all clean

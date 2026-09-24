@@ -6,6 +6,7 @@
 #include "quick_cast.h"
 #include "auto_gold.h"
 #include "game_ui.h"
+#include "rune_color.h"
 
 static HMODULE module;
 static HHOOK message_hook;
@@ -70,6 +71,8 @@ static DWORD WINAPI start_hook(void *unused)
     }
     while (!GetModuleHandleA("D2Client.dll")) Sleep(100);
     read_options(module, &config);
+    if (config.rune_color)
+        rune_color_init();
     quick_cast_init(config.quick_cast);
     auto_gold_init(&config);
     if (config.always_show_items && !item_labels_init())
