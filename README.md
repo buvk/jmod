@@ -10,7 +10,9 @@ The code is split into a small modular layout under `src/` and builds both DLL v
 
 ## Supported loading methods
 
-Use only one of these at a time:
+Choose one loading method. If both DLLs are loaded into the same game process,
+only the first instance to start its hook thread activates the gameplay helpers.
+The other instance remains loaded but does not install hooks.
 
 | Method | How to load it | Notes |
 | --- | --- | --- |
@@ -38,10 +40,14 @@ GoldRetryIntervalMs=500
 Meaning of the settings:
 
 - `QuickCast=1`: holds the right mouse button while a bound skill key is held.
+  Opening the Escape menu releases the simulated hold; a key held through the
+  menu must be released and pressed again before it can cast.
 - `AlwaysShowItems=1`: makes the normal Show Items binding toggle labels on and off.
   Ground labels are drawn before the hover tooltip pass so inventory and
-  equipment item stats can appear over labels.
-- `AutoGoldPickup=1`: requests pickup of nearby gold piles.
+  equipment item stats can appear over labels. Ground labels and their hover
+  targets are hidden while the Escape menu is open.
+- `AutoGoldPickup=1`: requests pickup of nearby gold piles while the game is
+  focused and the Escape menu is closed.
 - `GoldPickupInTown=0`: skips automatic gold pickup in the five towns; set to `1` to allow it.
 - `GoldPickupRange`: radius in map tiles, clamped to 1–6.
 - `GoldScanIntervalMs`, `GoldRequestIntervalMs`, `GoldRetryIntervalMs`: timing controls for gold scanning and pickup requests.
@@ -53,8 +59,8 @@ Restart the game after changing the INI. The patch is tied to the supplied 1.09b
 ### Proxy method
 
 1. Make a copy of your Diablo II 1.09b folder.
-2. Copy the built `build/D2Win.dll` into that copy.
-3. Rename the original `D2Win.dll` to `D2Win_original.dll` and keep it beside the proxy.
+2. Rename the original `D2Win.dll` in that copy to `D2Win_original.dll`.
+3. Copy the built `build/D2Win.dll` into the game folder beside `D2Win_original.dll`.
 4. Copy `jmod.ini` into the same folder if it is not already present.
 5. Launch the game from the copy and test in single-player.
 
@@ -95,9 +101,12 @@ The output is placed under `build/` and the repository is configured to ignore g
 .
 ├── build/                 # compiled DLLs produced by make
 ├── src/
-│   ├── config.c           # INI parsing and defaults
-│   ├── config.h           # config structures and declarations
-│   └── jmod.c             # runtime hooks and gameplay logic
+│   ├── auto_gold.c/.h     # automatic gold pickup
+│   ├── config.c/.h        # INI parsing and options
+│   ├── game_ui.h          # Escape menu state
+│   ├── item_labels.c/.h   # item label toggle and drawing
+│   ├── jmod.c             # DLL startup, window discovery, message hook
+│   └── quick_cast.c/.h    # skill key handling and simulated mouse input
 ├── jmod.ini               # default runtime settings
 ├── D2Win.def              # export definition file for the proxy build
 ├── Makefile               # build rules
