@@ -13,6 +13,7 @@ static HWND game_window;
 static DWORD game_thread;
 static BYTE held[256];
 static BYTE show_key_down[256];
+static int was_focused;
 static volatile unsigned held_count;
 static volatile LONG item_labels_on;
 static DWORD last_gold_at;
@@ -343,6 +344,7 @@ static DWORD WINAPI start_hook(void *unused)
     for (;;) {
         HWND found;
         DWORD thread;
+        int focused;
         game_window = NULL;
         game_thread = 0;
         EnumWindows(find_window, 0);
@@ -358,8 +360,17 @@ static DWORD WINAPI start_hook(void *unused)
         }
         if (!message_hook && found && thread)
             message_hook = SetWindowsHookExA(WH_GETMESSAGE, on_message, module, thread);
-        if (config.always_show_items && GetForegroundWindow() != game_window)
-            ZeroMemory(show_key_down, sizeof(show_key_down));
+        focused = (GetForegroundWindow() == game_window);
+        if (config.always_show_items && focused && !was_focused) {
+            /* the game's queue misses key-up events while unfocused; resync
+               against real key state instead of assuming everything is up,
+               or a still-held Show Items key (e.g. mid Alt-Tab) would look
+               like a fresh press and toggle labels again on return */
+            unsigned key;
+            for (key = 0; key < 256; ++key)
+                show_key_down[key] = (GetAsyncKeyState((int)key) & 0x8000) != 0;
+        }
+        was_focused = focused;
         if (config.auto_gold_pickup && message_hook && found &&
             GetForegroundWindow() == found &&
             InterlockedCompareExchange(&gold_message_pending, 1, 0) == 0 &&
