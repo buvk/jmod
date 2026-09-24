@@ -56,7 +56,10 @@ static void __fastcall draw_labels_before_tooltip(void *selected)
 {
     BYTE *client = (BYTE *)GetModuleHandleA("D2Client.dll");
     typedef void (__fastcall *draw_hover_fn)(void *);
-    if (item_labels_on)
+    typedef int (__cdecl *mode_getter_fn)(void);
+    /* vanilla skips label drawing entirely in game-state 3; preserve that
+       guard here since it no longer runs through the original gated site */
+    if (item_labels_on && ((mode_getter_fn)(client + 0x14a20))() != 3)
         draw_item_labels();
     ((draw_hover_fn)(client + 0x861c0))(selected);
 }
