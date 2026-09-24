@@ -16,7 +16,10 @@ static BYTE held[256];
 static BYTE show_key_down[256];
 static int was_focused;
 static int real_rbutton_down;
-static volatile unsigned held_count;
+static int injected_rbutton_down;
+static unsigned held_count;
+static unsigned qc_generation;
+static CRITICAL_SECTION input_lock;
 static volatile LONG item_labels_on;
 static DWORD last_gold_at;
 static struct { DWORD id, at; } recent_gold[32];
@@ -241,12 +244,14 @@ static void mouse_button(DWORD flag)
 
 static void release_all(void)
 {
+    EnterCriticalSection(&input_lock);
     ZeroMemory(held, sizeof(held));
-    if (held_count) {
-        held_count = 0;
-        if (!real_rbutton_down)
-            mouse_button(MOUSEEVENTF_RIGHTUP);
-    }
+    held_count = 0;
+    ++qc_generation; /* cancel queued commands, including an unprocessed up */
+    if (injected_rbutton_down && !real_rbutton_down)
+        mouse_button(MOUSEEVENTF_RIGHTUP);
+    injected_rbutton_down = 0;
+    LeaveCriticalSection(&input_lock);
 }
 
 static LRESULT CALLBACK on_message(int code, WPARAM removed, LPARAM value)
@@ -264,9 +269,17 @@ static LRESULT CALLBACK on_message(int code, WPARAM removed, LPARAM value)
         /* a genuine click, not one we synthesized: track it so releasing
            the skill key never steals control of it, and if the user lets
            go while a skill key is still held, keep quick-cast's hold alive */
+        EnterCriticalSection(&input_lock);
         real_rbutton_down = (msg->message == WM_RBUTTONDOWN);
-        if (!real_rbutton_down && held_count && GetForegroundWindow() == game_window)
+        if (real_rbutton_down) {
+            /* the physical button now owns the hold; its eventual up event
+               will release it unless quick cast is still active */
+            injected_rbutton_down = 0;
+        } else if (held_count && GetForegroundWindow() == game_window) {
+            injected_rbutton_down = 1;
             mouse_button(MOUSEEVENTF_RIGHTDOWN);
+        }
+        LeaveCriticalSection(&input_lock);
     }
     if (config.always_show_items && item_labels_on && msg->hwnd == game_window &&
         msg->message == WM_LBUTTONDOWN &&
@@ -285,10 +298,20 @@ static LRESULT CALLBACK on_message(int code, WPARAM removed, LPARAM value)
         return CallNextHookEx(message_hook, code, removed, value);
     }
     if (msg->message == QC_MESSAGE && msg->hwnd == game_window) {
-        if (msg->wParam == 1 && held_count && GetForegroundWindow() == game_window)
-            mouse_button(MOUSEEVENTF_RIGHTDOWN);
-        else if (msg->wParam == 2 && !real_rbutton_down)
-            mouse_button(MOUSEEVENTF_RIGHTUP);
+        EnterCriticalSection(&input_lock);
+        if ((unsigned)msg->lParam == qc_generation) {
+            if (msg->wParam == 1 && held_count &&
+                GetForegroundWindow() == game_window &&
+                !real_rbutton_down && !injected_rbutton_down) {
+                injected_rbutton_down = 1;
+                mouse_button(MOUSEEVENTF_RIGHTDOWN);
+            } else if (msg->wParam == 2 && !held_count && injected_rbutton_down) {
+                injected_rbutton_down = 0;
+                if (!real_rbutton_down)
+                    mouse_button(MOUSEEVENTF_RIGHTUP);
+            }
+        }
+        LeaveCriticalSection(&input_lock);
         msg->message = WM_NULL;
         return CallNextHookEx(message_hook, code, removed, value);
     }
@@ -319,19 +342,24 @@ static LRESULT CALLBACK on_message(int code, WPARAM removed, LPARAM value)
 
     if ((msg->message == WM_KEYDOWN || msg->message == WM_SYSKEYDOWN) &&
         msg->hwnd == game_window && GetForegroundWindow() == game_window) {
+        EnterCriticalSection(&input_lock);
         if (config.quick_cast && !held[key] && is_skill_key(key)) {
             held[key] = 1;
             if (++held_count == 1) {
-                real_rbutton_down = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
-                PostMessageA(game_window, QC_MESSAGE, 1, 0);
+                if (!injected_rbutton_down)
+                    real_rbutton_down = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
+                PostMessageA(game_window, QC_MESSAGE, 1, (LPARAM)++qc_generation);
             }
         }
+        LeaveCriticalSection(&input_lock);
     } else if (msg->message == WM_KEYUP || msg->message == WM_SYSKEYUP) {
+        EnterCriticalSection(&input_lock);
         if (held[key]) {
             held[key] = 0;
             if (--held_count == 0)
-                PostMessageA(game_window, QC_MESSAGE, 2, 0);
+                PostMessageA(game_window, QC_MESSAGE, 2, (LPARAM)++qc_generation);
         }
+        LeaveCriticalSection(&input_lock);
     }
     return CallNextHookEx(message_hook, code, removed, value);
 }
@@ -353,6 +381,7 @@ static BOOL CALLBACK find_window(HWND hwnd, LPARAM unused)
 static DWORD WINAPI start_hook(void *unused)
 {
     (void)unused;
+    InitializeCriticalSection(&input_lock);
     while (!GetModuleHandleA("D2Client.dll")) Sleep(100);
     read_options(module, &config);
     if (config.always_show_items && !install_item_label_toggle())
