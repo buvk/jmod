@@ -2,6 +2,7 @@
 #include <windows.h>
 #include "item_labels.h"
 #include "game_ui.h"
+#include "loot_filter.h"
 
 static BYTE show_key_down[256];
 static CRITICAL_SECTION labels_lock;
@@ -56,6 +57,33 @@ static int ground_label_contains(BYTE *client, const void *selected)
     return 0;
 }
 
+/* The game can recalculate its world target between drawing a label and
+   handling a click. Use the hovered label's unit when clicking its text. */
+static void select_clicked_label(BYTE *client)
+{
+    typedef int (__cdecl *cursor_fn)(void);
+    typedef void (__fastcall *select_unit_fn)(void *);
+    const BYTE *labels = client + 0x122490;
+    DWORD count = *(const DWORD *)(client + 0x124890);
+    int x = ((cursor_fn)(client + 0xb6670))();
+    int y = ((cursor_fn)(client + 0xb6680))();
+    DWORD i;
+
+    if (count > 32) count = 32;
+    /* Labels draw in list order, so the last hit is the one on top. */
+    for (i = count; i > 0; --i) {
+        const BYTE *label = labels + (i - 1) * 0x120;
+        void *item = *(void *const *)(label + 0x10);
+        if (item && *(const DWORD *)item == 4 &&
+            *(const DWORD *)(label + 0x118) == 5 &&
+            x >= *(const int *)label && x <= *(const int *)(label + 8) &&
+            y >= *(const int *)(label + 4) && y <= *(const int *)(label + 12)) {
+            ((select_unit_fn)(client + 0x14d60))(item);
+            return;
+        }
+    }
+}
+
 static void __fastcall draw_labels_before_tooltip(void *selected)
 {
     BYTE *client = (BYTE *)GetModuleHandleA("D2Client.dll");
@@ -70,6 +98,9 @@ static void __fastcall draw_labels_before_tooltip(void *selected)
         if (ground_label_contains(client, selected))
             return;
     }
+    if (selected && *(const DWORD *)selected == 4 &&
+        !loot_filter_show_item(selected))
+        return;
     ((draw_hover_fn)(client + 0x861c0))(selected);
 }
 
@@ -145,10 +176,12 @@ int item_labels_on_message(MSG *msg, HWND game_window)
         msg->message == WM_LBUTTONDOWN &&
         GetForegroundWindow() == game_window) {
         BYTE *client = (BYTE *)GetModuleHandleA("D2Client.dll");
-        if (client && !game_menu_open() &&
-            *(DWORD *)(client + 0x116dd0) &&
-            is_interactive_target(*(DWORD *)(client + 0x116db8)))
-            refresh_object_target(client);
+        if (client && !game_menu_open()) {
+            if (*(DWORD *)(client + 0x116dd0) &&
+                is_interactive_target(*(DWORD *)(client + 0x116db8)))
+                refresh_object_target(client);
+            select_clicked_label(client);
+        }
     }
     if (key >= 256 || msg->hwnd != game_window || !is_show_items_key(key))
         return 0;

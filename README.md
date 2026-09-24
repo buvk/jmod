@@ -1,11 +1,12 @@
 # jmod (juice mod) for Diablo II 1.09b
 
-`jmod` patches a specific Diablo II 1.09b install with four helpers:
+`jmod` patches a specific Diablo II 1.09b install with five helpers:
 
 - Quick Cast for keyboard-bound skills
 - Toggleable item labels via the in-game Show Items binding
 - Automatic gold pickup near the character
 - Optional orange rune names (no MPQ replacement or `-direct -txt` needed)
+- Ground-label filtering for small gold piles and low-tier potions
 
 The code is split into a small modular layout under `src/` and builds both DLL variants from the same source files.
 
@@ -24,7 +25,7 @@ Both variants read `jmod.ini` from the same folder as the DLL.
 
 ## Default configuration
 
-The bundled `jmod.ini` enables all four helpers by default:
+The bundled `jmod.ini` enables all five helpers by default:
 
 ```ini
 [Mods]
@@ -37,6 +38,18 @@ GoldPickupRange=4
 GoldScanIntervalMs=30
 GoldRequestIntervalMs=50
 GoldRetryIntervalMs=500
+
+[LootFilter]
+; 0 = off, 1 = on. Only ground labels are hidden.
+Enabled=1
+; Hide gold piles smaller than this amount. 0 shows all piles.
+MinGold=500
+; Any, Minor, Light, Standard, Greater, Super, None
+; Shows the selected tier and higher; Any shows all; None hides all.
+MinHealthPotion=Greater
+MinManaPotion=Greater
+; Any, Full, None. Full hides regular rejuvenation potions.
+MinRejuvenationPotion=Full
 ```
 
 Meaning of the settings:
@@ -59,6 +72,12 @@ Meaning of the settings:
   this option, to avoid coloring the names twice.
 - `GoldPickupRange`: radius in map tiles, clamped to 1–6.
 - `GoldScanIntervalMs`, `GoldRequestIntervalMs`, `GoldRetryIntervalMs`: timing controls for gold scanning and pickup requests.
+- `[LootFilter] Enabled=1`: filter ground labels shown by the game's Show Items binding, including when `AlwaysShowItems` is on. It does not delete items or change automatic gold pickup.
+- `MinGold`: hides piles below the specified amount; a pile of exactly that amount remains visible.
+- `MinHealthPotion` and `MinManaPotion`: show the selected tier and higher tiers; `Any` shows all, and `None` hides all five tiers.
+- `MinRejuvenationPotion`: `Any` shows both kinds, `Full` shows only Full Rejuvenation Potions, and `None` hides both.
+
+An unrecognized potion setting falls back to `Any`. If the label hook does not match the running client, jmod leaves labels unfiltered.
 
 Restart the game after changing the INI. The patch is tied to the supplied 1.09b binaries and their pointer layout.
 
@@ -114,6 +133,7 @@ The output is placed under `build/` and the repository is configured to ignore g
 │   ├── game_ui.h          # Escape menu state
 │   ├── item_labels.c/.h   # item label toggle and drawing
 │   ├── jmod.c             # DLL startup, window discovery, message hook
+│   ├── loot_filter.c/.h   # ground item label filter
 │   ├── quick_cast.c/.h    # skill key handling and simulated mouse input
 │   └── rune_color.c/.h    # optional rune name color
 ├── jmod.ini               # default runtime settings

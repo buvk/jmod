@@ -13,6 +13,11 @@ typedef struct D2ModConfig {
     DWORD gold_scan_interval_ms;
     DWORD gold_request_interval_ms;
     DWORD gold_retry_interval_ms;
+    int loot_filter_enabled;
+    int min_gold;
+    int min_health_potion;
+    int min_mana_potion;
+    int min_rejuvenation_potion;
 } D2ModConfig;
 
 void read_options(HMODULE module, D2ModConfig *config);

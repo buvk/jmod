@@ -1,6 +1,25 @@
 #include "config.h"
 #include <string.h>
 
+static int potion_tier(const char *value)
+{
+    static const char *const names[] = {
+        "Any", "Minor", "Light", "Standard", "Greater", "Super", "None"
+    };
+    unsigned i;
+    for (i = 0; i < sizeof(names) / sizeof(names[0]); ++i)
+        if (lstrcmpiA(value, names[i]) == 0)
+            return (int)i;
+    return 0;
+}
+
+static int rejuv_tier(const char *value)
+{
+    if (lstrcmpiA(value, "Full") == 0) return 1;
+    if (lstrcmpiA(value, "None") == 0) return 2;
+    return 0;
+}
+
 void read_options(HMODULE module, D2ModConfig *config)
 {
     char path[MAX_PATH];
@@ -39,4 +58,17 @@ void read_options(HMODULE module, D2ModConfig *config)
 
     value = GetPrivateProfileIntA("Mods", "GoldRetryIntervalMs", 500, path);
     config->gold_retry_interval_ms = (DWORD)(value < 50 ? 50 : value > 10000 ? 10000 : value);
+
+    config->loot_filter_enabled = GetPrivateProfileIntA("LootFilter", "Enabled", 0, path) != 0;
+    value = GetPrivateProfileIntA("LootFilter", "MinGold", 0, path);
+    config->min_gold = value < 0 ? 0 : value;
+    {
+        char option[32];
+        GetPrivateProfileStringA("LootFilter", "MinHealthPotion", "Any", option, sizeof(option), path);
+        config->min_health_potion = potion_tier(option);
+        GetPrivateProfileStringA("LootFilter", "MinManaPotion", "Any", option, sizeof(option), path);
+        config->min_mana_potion = potion_tier(option);
+        GetPrivateProfileStringA("LootFilter", "MinRejuvenationPotion", "Any", option, sizeof(option), path);
+        config->min_rejuvenation_potion = rejuv_tier(option);
+    }
 }

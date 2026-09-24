@@ -7,6 +7,7 @@
 #include "auto_gold.h"
 #include "game_ui.h"
 #include "rune_color.h"
+#include "loot_filter.h"
 
 static HMODULE module;
 static HHOOK message_hook;
@@ -75,6 +76,8 @@ static DWORD WINAPI start_hook(void *unused)
         rune_color_init();
     quick_cast_init(config.quick_cast);
     auto_gold_init(&config);
+    if (!loot_filter_init(&config))
+        config.loot_filter_enabled = 0;
     if (config.always_show_items && !item_labels_init())
         config.always_show_items = 0;
     for (;;) {
