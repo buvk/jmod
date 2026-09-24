@@ -62,6 +62,7 @@ int item_labels_init(void)
     BYTE *client = (BYTE *)GetModuleHandleA("D2Client.dll");
     BYTE *render, *draw_call, *tooltip_call;
     DWORD expected, old_render, old_call, old_tooltip, unused;
+    InitializeCriticalSection(&labels_lock);
     if (!client) return 0;
     render = client + 0x877d2;
     draw_call = client + 0x877e5;
