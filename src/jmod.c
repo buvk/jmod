@@ -20,6 +20,11 @@ static struct { DWORD id, at; } recent_gold[32];
 static volatile LONG gold_message_pending;
 static D2ModConfig config;
 
+static int is_interactive_target(DWORD type)
+{
+    return type == 1 || type == 2;
+}
+
 static void refresh_object_target(BYTE *client)
 {
     typedef void (__cdecl *update_cursor_fn)(void);
@@ -35,14 +40,14 @@ static void __cdecl draw_item_labels(void)
     typedef void (__fastcall *draw_hover_fn)(void *);
     DWORD *selected = (DWORD *)(client + 0x116dd0);
     DWORD type = *(DWORD *)(client + 0x116db8);
-    int had_object = *selected && type == 2;
+    int had_object = *selected && is_interactive_target(type);
     void *object = NULL;
 
     ((draw_fn)(client + 0x63b60))();
     if (had_object && item_labels_on) {
         refresh_object_target(client);
         object = ((selected_unit_fn)(client + 0x14cf0))();
-        if (object && *(DWORD *)object == 2)
+        if (object && is_interactive_target(*(DWORD *)object))
             ((draw_hover_fn)(client + 0x861c0))(object);
     }
 }
@@ -221,7 +226,7 @@ static LRESULT CALLBACK on_message(int code, WPARAM removed, LPARAM value)
         GetForegroundWindow() == game_window) {
         BYTE *client = (BYTE *)GetModuleHandleA("D2Client.dll");
         if (client && *(DWORD *)(client + 0x116dd0) &&
-            *(DWORD *)(client + 0x116db8) == 2)
+            is_interactive_target(*(DWORD *)(client + 0x116db8)))
             refresh_object_target(client);
     }
     if (msg->message == PICKUP_GOLD_MESSAGE && msg->hwnd == game_window) {
