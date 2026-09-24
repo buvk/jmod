@@ -229,9 +229,10 @@ static LRESULT CALLBACK on_message(int code, WPARAM removed, LPARAM value)
             is_interactive_target(*(DWORD *)(client + 0x116db8)))
             refresh_object_target(client);
     }
-    if (msg->message == PICKUP_GOLD_MESSAGE && msg->hwnd == game_window) {
+    if (msg->message == PICKUP_GOLD_MESSAGE) {
+        /* always clear pending: game_window can race to NULL on the polling thread */
         InterlockedExchange(&gold_message_pending, 0);
-        if (GetForegroundWindow() == game_window)
+        if (msg->hwnd == game_window && GetForegroundWindow() == msg->hwnd)
             pick_up_nearby_gold();
         msg->message = WM_NULL;
         return CallNextHookEx(message_hook, code, removed, value);
