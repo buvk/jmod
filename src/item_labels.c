@@ -96,6 +96,11 @@ static void __fastcall draw_labels_before_tooltip(void *selected)
     BYTE *client = (BYTE *)GetModuleHandleA("D2Client.dll");
     typedef void (__fastcall *draw_hover_fn)(void *);
     typedef int (__cdecl *mode_getter_fn)(void);
+    if (!game_active()) {
+        /* Outside an active game, preserve the original tooltip call only. */
+        ((draw_hover_fn)(client + D2CLIENT_FN_DRAW_HOVER_OFFSET))(selected);
+        return;
+    }
     /* vanilla skips label drawing entirely in game-state 3; preserve that
        guard here since it no longer runs through the original gated site */
     if (item_labels_on && game_menu_open())

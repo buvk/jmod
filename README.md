@@ -80,9 +80,10 @@ Meaning of the settings:
   `0x10` unique; and `0x20` crafted. Add values to combine them: `0x14`
   shows rare and unique, `0x00` hides the item, and `0x3F` shows everything.
   Potions, arrows, bolts, runes, and gems use `0x01`; quest items always show.
-  The bundled file hides minor, light, and standard healing and mana potions,
-  and regular rejuvenation potions, matching the old defaults. Edit their
-  named entries to choose different potion tiers.
+  The bundled file currently hides all healing and mana potion tiers, regular
+  rejuvenation potions, utility and throwable potions, flawed and regular
+  gems, arrows, bolts, and Large Charms. Edit their named entries to choose
+  different defaults.
   Entries are grouped by item type. Weapons have sections such as `[Axes]`,
   `[Bows]`, `[Katars]`, and `[Swords]`; armor has `[Body Armor]`, `[Helms]`,
   `[Shields]`, and class-specific sections. Each equipment section separates
@@ -109,10 +110,11 @@ and `MinRejuvenationPotion` settings are no longer used; migrate their choices
 to `loot_filter.ini`. If the label hook does not match the running client,
 jmod leaves labels unfiltered.
 
-The named list excludes legacy entries and codes absent from the supplied
-1.09b item tables. The active `hp3` and `mp3` entries appear simply as
-`Healing Potion` and `Mana Potion`. Excluded codes remain visible if they
-appear in a game; the filter leaves unknown item codes alone.
+The named list includes the supplied 1.09b records used by the filter.
+Legacy/unused records that are not part of normal released-game item flow are
+grouped under `[Unknown]` and default to visible. The active `hp3` and `mp3`
+entries appear simply as `Healing Potion` and `Mana Potion`. Codes absent from
+the list remain visible if they appear in a game.
 
 Restart the game after changing either INI. The patch is tied to the supplied 1.09b binaries and their pointer layout.
 
@@ -165,6 +167,7 @@ The output is placed under `build/` and the repository is configured to ignore g
 ├── src/
 │   ├── auto_gold.c/.h     # automatic gold pickup
 │   ├── config.c/.h        # INI parsing and options
+│   ├── d2_109b.h          # centralized Diablo II 1.09b offsets and ordinals
 │   ├── game_ui.h          # active-game and Escape-menu state
 │   ├── item_labels.c/.h   # item label toggle and drawing
 │   ├── item_names.h       # item type names used by the loot filter

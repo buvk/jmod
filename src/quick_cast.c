@@ -1,6 +1,5 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#include <string.h>
 #include "quick_cast.h"
 #include "game_ui.h"
 #include "d2_109b.h"
@@ -186,7 +185,12 @@ int quick_cast_on_message(MSG *msg, HWND game_window)
             if (++held_count == 1) {
                 if (!injected_rbutton_down)
                     real_rbutton_down = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
-                PostMessageA(game_window, QC_MESSAGE, 1, (LPARAM)++qc_generation);
+                ++qc_generation;
+                if (!PostMessageA(game_window, QC_MESSAGE, 1,
+                                  (LPARAM)qc_generation)) {
+                    held[key] = 0;
+                    held_count = 0;
+                }
             }
         }
         LeaveCriticalSection(&input_lock);
@@ -195,8 +199,15 @@ int quick_cast_on_message(MSG *msg, HWND game_window)
         blocked[key] = 0;
         if (held[key]) {
             held[key] = 0;
-            if (--held_count == 0)
-                PostMessageA(game_window, QC_MESSAGE, 2, (LPARAM)++qc_generation);
+            if (--held_count == 0) {
+                ++qc_generation;
+                if (!PostMessageA(game_window, QC_MESSAGE, 2,
+                                  (LPARAM)qc_generation)) {
+                    if (injected_rbutton_down && !real_rbutton_down)
+                        mouse_button(MOUSEEVENTF_RIGHTUP);
+                    injected_rbutton_down = 0;
+                }
+            }
         }
         LeaveCriticalSection(&input_lock);
     }
