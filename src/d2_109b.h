@@ -15,6 +15,9 @@
 #define D2CLIENT_ITEM_LABEL_COUNT_OFFSET           0x124890u
 #define D2CLIENT_ITEM_LABEL_RENDER_FLAG_OFFSET     0x125a68u
 #define D2CLIENT_UNIT_HASH_TABLES_OFFSET           0x125d78u
+#define D2CLIENT_UI_MODE_OFFSET                    0x120d54u
+#define D2CLIENT_UI_MODE_STASH                     12u
+#define D2CLIENT_CURSOR_ITEM_PTR_OFFSET             0x12c2a8u
 
 /* D2Client functions. */
 #define D2CLIENT_FN_GAME_MODE_OFFSET               0x14a20u
@@ -26,6 +29,9 @@
 #define D2CLIENT_FN_DRAW_HOVER_OFFSET              0x861c0u
 #define D2CLIENT_FN_CURSOR_X_OFFSET                0xb6670u
 #define D2CLIENT_FN_CURSOR_Y_OFFSET                0xb6680u
+#define D2CLIENT_FN_IS_EXPANSION_OFFSET            0x0ba00u
+#define D2CLIENT_FN_INVENTORY_CLICK_OFFSET         0x40b00u
+#define D2CLIENT_FN_DRAW_CURSOR_OFFSET              0xb6570u
 
 /* D2Client patch sites. */
 #define D2CLIENT_HOOK_LOOT_LABEL_OFFSET            0x63bf9u
@@ -34,6 +40,14 @@
 #define D2CLIENT_HOOK_LABEL_TOOLTIP_OFFSET         0x872a5u
 #define D2CLIENT_HOOK_LABEL_RENDER_FLAG_OFFSET     0x877d2u
 #define D2CLIENT_HOOK_LABEL_DRAW_CALL_OFFSET       0x877e5u
+#define D2CLIENT_HOOK_INVENTORY_CLICK_OFFSET       0x405ecu
+#define D2CLIENT_HOOK_STASH_CLICK_OFFSET           0x40a2fu
+#define D2CLIENT_HOOK_DRAW_CURSOR_1_OFFSET          0x090d3u
+#define D2CLIENT_HOOK_DRAW_CURSOR_2_OFFSET          0x0aa65u
+#define D2CLIENT_HOOK_DRAW_CURSOR_3_OFFSET          0x35fffu
+#define D2CLIENT_HOOK_DRAW_CURSOR_4_OFFSET          0x3622au
+#define D2CLIENT_HOOK_DRAW_CURSOR_5_OFFSET          0x367e1u
+#define D2CLIENT_HOOK_DRAW_CURSOR_6_OFFSET          0x36a6au
 
 /* Key binding table. */
 #define D2CLIENT_KEY_BINDING_COUNT                 114u
@@ -57,7 +71,16 @@
 #define D2UNIT_MONSTER                             1u
 #define D2UNIT_OBJECT                              2u
 #define D2UNIT_ITEM                                4u
+#define D2ITEM_MODE_STORED                         0u
 #define D2ITEM_MODE_GROUND                         3u
+
+/* Inventory/stash grid descriptors used by the 1.09b click handler. */
+#define D2CLIENT_INVENTORY_GRID_LEFT_OFFSET        0x04u
+#define D2CLIENT_INVENTORY_GRID_TOP_OFFSET         0x0cu
+#define D2CLIENT_INVENTORY_GRID_CELL_WIDTH_OFFSET  0x14u
+#define D2CLIENT_INVENTORY_GRID_CELL_HEIGHT_OFFSET 0x15u
+#define D2INVPAGE_INVENTORY                        0u
+#define D2INVPAGE_STASH                            4u
 
 /* Client ground-label records. */
 #define D2CLIENT_ITEM_LABEL_MAX                    32u
@@ -92,6 +115,14 @@
 #define D2ITEM_IMMEDIATE_PICKUP_MAX_DISTANCE       4
 #define D2ITEM_INTERACT_COLLISION_MASK             0x804
 
+/* Client-to-server grid placement packet. */
+#define D2NET_PACKET_INSERT_ITEM                   0x18u
+#define D2NET_PACKET_INSERT_ITEM_SIZE              17u
+#define D2NET_PACKET_INSERT_ITEM_ID_OFFSET         1u
+#define D2NET_PACKET_INSERT_ITEM_X_OFFSET          5u
+#define D2NET_PACKET_INSERT_ITEM_Y_OFFSET          9u
+#define D2NET_PACKET_INSERT_ITEM_PAGE_OFFSET       13u
+
 /* Client-to-server item pickup packet. */
 #define D2NET_PACKET_PICKUP_ITEM                   0x16u
 #define D2NET_PACKET_PICKUP_ITEM_SIZE              13u
@@ -101,6 +132,11 @@
 
 /* Export ordinals used by jmod. */
 #define D2COMMON_GET_LEVEL_ID_ORDINAL              10057
+#define D2COMMON_INVENTORY_GET_FREE_POSITION_ORDINAL 10245
+#define D2COMMON_INVENTORY_GET_ITEM_FROM_PAGE_ORDINAL 10252
+#define D2COMMON_INVENTORY_GET_CURSOR_ITEM_ORDINAL 10262
+#define D2COMMON_GET_INVENTORY_RECORD_ID_ORDINAL   10409
+#define D2COMMON_GET_ITEM_PAGE_ORDINAL             10719
 #define D2COMMON_GET_ROOM_ORDINAL                  10342
 #define D2COMMON_TEST_INTERACTION_COLLISION_ORDINAL 10363
 #define D2COMMON_UNIT_DISTANCE_ORDINAL             10399

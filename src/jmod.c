@@ -9,6 +9,7 @@
 #include "rune_color.h"
 #include "loot_filter.h"
 #include "d2_109b.h"
+#include "inventory_qol.h"
 
 static HMODULE module;
 static HHOOK message_hook;
@@ -24,6 +25,10 @@ static LRESULT CALLBACK on_message(int code, WPARAM removed, LPARAM value)
     if (code < 0 || removed != PM_REMOVE)
         return CallNextHookEx(message_hook, code, removed, value);
     msg = (MSG *)value;
+    if (inventory_qol_on_message(msg, game_window)) {
+        msg->message = WM_NULL;
+        return CallNextHookEx(message_hook, code, removed, value);
+    }
     if (config.always_show_items && item_labels_on_message(msg, game_window)) {
         msg->message = WM_NULL;
         return CallNextHookEx(message_hook, code, removed, value);
@@ -97,6 +102,8 @@ static DWORD WINAPI start_hook(void *unused)
         config.rune_color = 0;
     quick_cast_init(config.quick_cast);
     auto_gold_init(&config);
+    if (config.inventory_quick_move && !inventory_qol_init(&config))
+        config.inventory_quick_move = 0;
     if (!loot_filter_init(&config, module))
         config.loot_filter_enabled = 0;
     if (config.always_show_items && !item_labels_init())
@@ -123,6 +130,7 @@ static DWORD WINAPI start_hook(void *unused)
             UnhookWindowsHookEx(message_hook);
             message_hook = NULL;
             auto_gold_reset();
+            inventory_qol_reset();
             was_focused = 0;
             was_game_active = 0;
         }
@@ -141,18 +149,27 @@ static DWORD WINAPI start_hook(void *unused)
                 item_labels_resync_keys();
             quick_cast_resync_keys();
         }
-        if (!active && was_game_active)
+        if (!active && was_game_active) {
             auto_gold_reset();
+            inventory_qol_reset();
+        }
 
         auto_gold_poll(found, message_hook != NULL);
-        if (!focused || !active)
+        inventory_qol_poll(found, message_hook != NULL);
+        if (!focused || !active) {
             quick_cast_release_all();
+            inventory_qol_reset();
+        }
         else if (game_menu_open())
             quick_cast_pause();
 
         was_focused = focused;
         was_game_active = active;
-        Sleep(config.auto_gold_pickup && active ? AUTO_GOLD_SCAN_INTERVAL_MS : 100);
+        if (inventory_qol_pending())
+            Sleep(INVENTORY_QOL_POLL_INTERVAL_MS);
+        else
+            Sleep(config.auto_gold_pickup && active ?
+                  AUTO_GOLD_SCAN_INTERVAL_MS : 100);
     }
     return 0;
 }
