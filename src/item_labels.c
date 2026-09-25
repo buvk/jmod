@@ -8,6 +8,11 @@ static BYTE show_key_down[256];
 static CRITICAL_SECTION labels_lock;
 static volatile LONG item_labels_on;
 
+static int is_game_active(const BYTE *client)
+{
+    return client && *(const void *const *)(client + 0x127578) != NULL;
+}
+
 static int is_interactive_target(DWORD type)
 {
     return type == 1 || type == 2;
@@ -176,9 +181,9 @@ int item_labels_on_message(MSG *msg, HWND game_window)
         msg->message == WM_LBUTTONDOWN &&
         GetForegroundWindow() == game_window) {
         BYTE *client = (BYTE *)GetModuleHandleA("D2Client.dll");
-        if (client &&
-            *(const void *const *)(client + 0x127578) &&
-            !game_menu_open()) {
+        /* D2Client's world-target functions require an active game.
+           Calling them from the front end can dereference stale target state. */
+        if (is_game_active(client) && !game_menu_open()) {
             if (*(DWORD *)(client + 0x116dd0) &&
                 is_interactive_target(*(DWORD *)(client + 0x116db8)))
                 refresh_object_target(client);
@@ -197,7 +202,7 @@ int item_labels_on_message(MSG *msg, HWND game_window)
             return 1;
         }
         if (GetForegroundWindow() == game_window &&
-            *(const void *const *)((BYTE *)GetModuleHandleA("D2Client.dll") + 0x127578)) {
+            is_game_active((const BYTE *)GetModuleHandleA("D2Client.dll"))) {
             EnterCriticalSection(&labels_lock);
             if (!show_key_down[key]) {
                 show_key_down[key] = 1;
