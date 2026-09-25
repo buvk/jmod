@@ -1,6 +1,8 @@
 # Use the 32-bit MinGW toolchain from MSYS2 or another MinGW-w64 install.
 # Example: make CC="C:/msys64/mingw32/bin/i686-w64-mingw32-gcc.exe"
-CC ?= i686-w64-mingw32-gcc
+ifeq ($(origin CC), default)
+CC := i686-w64-mingw32-gcc
+endif
 CPPFLAGS ?= -Isrc
 CFLAGS ?= -std=c11 -O2 -Wall -Wextra
 LIBS = -luser32

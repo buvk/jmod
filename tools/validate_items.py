@@ -9,6 +9,8 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 ITEM_NAMES_PATH = ROOT / "src" / "item_names.h"
 LOOT_FILTER_PATH = ROOT / "loot_filter.ini"
+EXPECTED_ITEM_COUNT = 647
+ALLOWED_LEGACY_SECTIONS = {None, "Weapons", "Armor"}
 
 ITEM_RE = re.compile(
     r'^\s*\{\s*(0x[0-9A-Fa-f]+)[uUlL]*\s*,\s*"([^"]+)"\s*,\s*'
@@ -24,9 +26,24 @@ def error(errors: list[str], message: str) -> None:
 
 def parse_item_names(errors: list[str]) -> list[dict[str, object]]:
     entries: list[dict[str, object]] = []
-    for line_no, raw in enumerate(ITEM_NAMES_PATH.read_text(encoding="utf-8").splitlines(), 1):
-        if "{ 0x" not in raw:
+    in_table = False
+    found_table = False
+    lines = ITEM_NAMES_PATH.read_text(encoding="utf-8").splitlines()
+
+    for line_no, raw in enumerate(lines, 1):
+        line = raw.strip()
+        if not in_table:
+            if re.fullmatch(r"static\s+const\s+ItemName\s+item_names\[\]\s*=\s*\{", line):
+                in_table = True
+                found_table = True
             continue
+
+        if line == "};":
+            in_table = False
+            break
+        if not line or line.startswith(("/*", "*", "*/", "//")):
+            continue
+
         match = ITEM_RE.match(raw)
         if not match:
             error(errors, f"{ITEM_NAMES_PATH.relative_to(ROOT)}:{line_no}: unrecognized item entry")
@@ -43,7 +60,12 @@ def parse_item_names(errors: list[str]) -> list[dict[str, object]]:
                 "line": line_no,
             }
         )
-    if not entries:
+
+    if not found_table:
+        error(errors, f"item_names array not found in {ITEM_NAMES_PATH.relative_to(ROOT)}")
+    elif in_table:
+        error(errors, f"unterminated item_names array in {ITEM_NAMES_PATH.relative_to(ROOT)}")
+    elif not entries:
         error(errors, f"no item definitions found in {ITEM_NAMES_PATH.relative_to(ROOT)}")
     return entries
 
@@ -114,6 +136,17 @@ def main() -> int:
     report_duplicates(errors, "item code", codes)
     report_duplicates(errors, "item name", names)
 
+    if len(header) != EXPECTED_ITEM_COUNT:
+        error(
+            errors,
+            f"item_names.h item count changed: expected {EXPECTED_ITEM_COUNT}, found {len(header)}",
+        )
+    if len(ini) != EXPECTED_ITEM_COUNT:
+        error(
+            errors,
+            f"loot_filter.ini item count changed: expected {EXPECTED_ITEM_COUNT}, found {len(ini)}",
+        )
+
     for previous, current in zip(header, header[1:]):
         if int(previous["code"]) >= int(current["code"]):
             error(
@@ -124,6 +157,12 @@ def main() -> int:
             )
 
     for entry in header:
+        if entry["legacy"] not in ALLOWED_LEGACY_SECTIONS:
+            error(
+                errors,
+                f'{ITEM_NAMES_PATH.relative_to(ROOT)}:{entry["line"]}: invalid legacy section '
+                f'{entry["legacy"]!r} for {entry["name"]!r}',
+            )
         is_quest_section = entry["section"] == "Quest Items"
         if bool(entry["quest"]) != is_quest_section:
             error(

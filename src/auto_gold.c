@@ -10,7 +10,7 @@
 typedef int (__stdcall *unit_distance_fn)(const void *, const void *);
 typedef int (__stdcall *unit_collision_fn)(const void *, const void *, int);
 typedef const BYTE *(__stdcall *item_text_fn)(DWORD);
-typedef void (__stdcall *send_packet_fn)(DWORD, const BYTE *, DWORD);
+typedef DWORD (__stdcall *send_packet_fn)(DWORD, const BYTE *, DWORD);
 
 typedef struct RecentGold {
     DWORD id;
@@ -99,6 +99,8 @@ static void pick_up_nearby_gold_locked(void)
     const BYTE *record;
     BYTE packet[D2NET_PACKET_PICKUP_ITEM_SIZE];
     DWORD id, now;
+    DWORD packet_unit_type = D2UNIT_ITEM;
+    DWORD packet_reserved = 0;
     unsigned bucket, visited;
     const BYTE *const *items;
 
@@ -145,11 +147,13 @@ static void pick_up_nearby_gold_locked(void)
                 unit_collision(player, item, D2ITEM_INTERACT_COLLISION_MASK))
                 continue;
             packet[0] = D2NET_PACKET_PICKUP_ITEM;
-            *(DWORD *)(packet + D2NET_PACKET_PICKUP_UNIT_TYPE_OFFSET) =
-                D2UNIT_ITEM;
-            *(DWORD *)(packet + D2NET_PACKET_PICKUP_UNIT_ID_OFFSET) = id;
-            *(DWORD *)(packet + D2NET_PACKET_PICKUP_RESERVED_OFFSET) = 0;
-            send_packet(0, packet, sizeof(packet));
+            CopyMemory(packet + D2NET_PACKET_PICKUP_UNIT_TYPE_OFFSET,
+                       &packet_unit_type, sizeof(packet_unit_type));
+            CopyMemory(packet + D2NET_PACKET_PICKUP_UNIT_ID_OFFSET,
+                       &id, sizeof(id));
+            CopyMemory(packet + D2NET_PACKET_PICKUP_RESERVED_OFFSET,
+                       &packet_reserved, sizeof(packet_reserved));
+            (void)send_packet(0, packet, sizeof(packet));
             last_gold_at = now;
             remember_gold_request(id, now);
             return;

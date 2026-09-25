@@ -38,14 +38,22 @@ static int is_skill_key(WPARAM key)
     return 0;
 }
 
-static void mouse_button(DWORD flag)
+static int mouse_button(DWORD flag)
 {
     INPUT input;
     ZeroMemory(&input, sizeof(input));
     input.type = INPUT_MOUSE;
     input.mi.dwFlags = flag;
     input.mi.dwExtraInfo = RBUTTON_INJECT_MARK;
-    SendInput(1, &input, sizeof(input));
+    return SendInput(1, &input, sizeof(input)) == 1;
+}
+
+static void release_injected_rbutton(void)
+{
+    if (!injected_rbutton_down)
+        return;
+    if (real_rbutton_down || mouse_button(MOUSEEVENTF_RIGHTUP))
+        injected_rbutton_down = 0;
 }
 
 void quick_cast_release_all(void)
@@ -62,9 +70,7 @@ void quick_cast_release_all(void)
     if (held_count || injected_rbutton_down)
         ++qc_generation; /* cancel commands queued for the old hold */
     held_count = 0;
-    if (injected_rbutton_down && !real_rbutton_down)
-        mouse_button(MOUSEEVENTF_RIGHTUP);
-    injected_rbutton_down = 0;
+    release_injected_rbutton();
     LeaveCriticalSection(&input_lock);
 }
 
@@ -81,9 +87,7 @@ void quick_cast_pause(void)
     if (held_count || injected_rbutton_down)
         ++qc_generation;
     held_count = 0;
-    if (injected_rbutton_down && !real_rbutton_down)
-        mouse_button(MOUSEEVENTF_RIGHTUP);
-    injected_rbutton_down = 0;
+    release_injected_rbutton();
     LeaveCriticalSection(&input_lock);
 }
 
@@ -144,8 +148,7 @@ int quick_cast_on_message(MSG *msg, HWND game_window)
             injected_rbutton_down = 0;
         } else if (held_count && !menu_open &&
                    GetForegroundWindow() == game_window) {
-            injected_rbutton_down = 1;
-            mouse_button(MOUSEEVENTF_RIGHTDOWN);
+            injected_rbutton_down = mouse_button(MOUSEEVENTF_RIGHTDOWN);
         }
         LeaveCriticalSection(&input_lock);
     }
@@ -155,12 +158,9 @@ int quick_cast_on_message(MSG *msg, HWND game_window)
             if (msg->wParam == 1 && held_count && !menu_open &&
                 GetForegroundWindow() == game_window &&
                 !real_rbutton_down && !injected_rbutton_down) {
-                injected_rbutton_down = 1;
-                mouse_button(MOUSEEVENTF_RIGHTDOWN);
+                injected_rbutton_down = mouse_button(MOUSEEVENTF_RIGHTDOWN);
             } else if (msg->wParam == 2 && !held_count && injected_rbutton_down) {
-                injected_rbutton_down = 0;
-                if (!real_rbutton_down)
-                    mouse_button(MOUSEEVENTF_RIGHTUP);
+                release_injected_rbutton();
             }
         }
         LeaveCriticalSection(&input_lock);
@@ -202,11 +202,8 @@ int quick_cast_on_message(MSG *msg, HWND game_window)
             if (--held_count == 0) {
                 ++qc_generation;
                 if (!PostMessageA(game_window, QC_MESSAGE, 2,
-                                  (LPARAM)qc_generation)) {
-                    if (injected_rbutton_down && !real_rbutton_down)
-                        mouse_button(MOUSEEVENTF_RIGHTUP);
-                    injected_rbutton_down = 0;
-                }
+                                  (LPARAM)qc_generation))
+                    release_injected_rbutton();
             }
         }
         LeaveCriticalSection(&input_lock);

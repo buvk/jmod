@@ -19,7 +19,7 @@ static const struct { unsigned rune, id; const char *name; } patch_names[3] = {
     { 31, D2LANG_RUNE_JAH_ID, "Jah Rune" }
 };
 
-typedef const WORD *(__fastcall *lookup_fn)(unsigned);
+typedef const WORD *(__fastcall *lookup_fn)(WORD);
 typedef const WORD *(__fastcall *key_lookup_fn)(const char *);
 static lookup_fn original_lookup;
 static key_lookup_fn original_key_lookup;
@@ -47,7 +47,7 @@ static int matches(const WORD *original, const char *expected)
     return original[i] == 0;
 }
 
-static const WORD *__fastcall colored_lookup(unsigned id)
+static const WORD *__fastcall colored_lookup(WORD id)
 {
     unsigned i;
     const WORD *original = original_lookup(id);

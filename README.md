@@ -81,9 +81,9 @@ Meaning of the settings:
   shows rare and unique, `0x00` hides the item, and `0x3F` shows everything.
   Potions, arrows, bolts, runes, and gems use `0x01`; quest items always show.
   The bundled file currently hides all healing and mana potion tiers, regular
-  rejuvenation potions, utility and throwable potions, flawed and regular
-  gems, arrows, bolts, and Large Charms. Edit their named entries to choose
-  different defaults.
+  rejuvenation potions, utility and throwable potions, loose Identify and Town
+  Portal scrolls, flawed and regular gems, arrows, bolts, and Large Charms.
+  Edit their named entries to choose different defaults.
   Entries are grouped by item type. Weapons have sections such as `[Axes]`,
   `[Bows]`, `[Katars]`, and `[Swords]`; armor has `[Body Armor]`, `[Helms]`,
   `[Shields]`, and class-specific sections. Each equipment section separates
@@ -145,7 +145,13 @@ In MSYS2, install the expected toolchain:
 pacman -S --needed mingw-w64-i686-gcc make
 ```
 
-Then build from the repository root:
+Validate the item-name table and loot-filter entries from the repository root:
+
+```sh
+make validate
+```
+
+Then build:
 
 ```sh
 make
@@ -177,6 +183,8 @@ The output is placed under `build/` and the repository is configured to ignore g
 │   └── rune_color.c/.h    # optional rune name color
 ├── jmod.ini               # default runtime settings
 ├── loot_filter.ini        # per-item quality masks
+├── tools/
+│   └── validate_items.py  # verifies item table/filter synchronization
 ├── D2Win.def              # export definition file for the proxy build
 ├── Makefile               # build rules
 ├── .gitattributes         # consistent text line endings
