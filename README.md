@@ -6,7 +6,7 @@
 - Toggleable item labels via the in-game Show Items binding
 - Automatic gold pickup near the character
 - Optional orange rune names (no MPQ replacement or `-direct -txt` needed)
-- Ground-label filtering for small gold piles and low-tier potions
+- Ground-label filtering by item name and quality, plus small gold piles
 
 The code is split into a small modular layout under `src/` and builds both DLL variants from the same source files.
 
@@ -21,7 +21,7 @@ The other instance remains loaded but does not install hooks.
 | `D2Win.dll` proxy | Replace the game's `D2Win.dll` | Keep the original as `D2Win_original.dll` |
 | `jmod.dll` | Load it via PlugY's `DllToLoad` | Leave the original `D2Win.dll` intact |
 
-Both variants read `jmod.ini` from the same folder as the DLL.
+Both variants read `jmod.ini` and `loot_filter.ini` from the same folder as the DLL.
 
 ## Default configuration
 
@@ -44,12 +44,7 @@ GoldRetryIntervalMs=500
 Enabled=1
 ; Hide gold piles smaller than this amount. 0 shows all piles.
 MinGold=500
-; Any, Minor, Light, Standard, Greater, Super, None
-; Shows the selected tier and higher; Any shows all; None hides all.
-MinHealthPotion=Greater
-MinManaPotion=Greater
-; Any, Full, None. Full hides regular rejuvenation potions.
-MinRejuvenationPotion=Full
+; Set individual item masks in loot_filter.ini.
 ```
 
 Meaning of the settings:
@@ -74,12 +69,48 @@ Meaning of the settings:
 - `GoldScanIntervalMs`, `GoldRequestIntervalMs`, `GoldRetryIntervalMs`: timing controls for gold scanning and pickup requests.
 - `[LootFilter] Enabled=1`: filter ground labels shown by the game's Show Items binding, including when `AlwaysShowItems` is on. It does not delete items or change automatic gold pickup.
 - `MinGold`: hides piles below the specified amount; a pile of exactly that amount remains visible.
-- `MinHealthPotion` and `MinManaPotion`: show the selected tier and higher tiers; `Any` shows all, and `None` hides all five tiers.
-- `MinRejuvenationPotion`: `Any` shows both kinds, `Full` shows only Full Rejuvenation Potions, and `None` hides both.
+- `loot_filter.ini`: each named item type has a hex quality mask. `0x01` shows
+  normal, inferior, and superior; `0x02` magic; `0x04` rare; `0x08` set;
+  `0x10` unique; and `0x20` crafted. Add values to combine them: `0x14`
+  shows rare and unique, `0x00` hides the item, and `0x3F` shows everything.
+  Potions, arrows, bolts, runes, and gems use `0x01`; quest items always show.
+  The bundled file hides minor, light, and standard healing and mana potions,
+  and regular rejuvenation potions, matching the old defaults. Edit their
+  named entries to choose different potion tiers.
+  Entries are grouped by item type. Weapons have sections such as `[Axes]`,
+  `[Bows]`, `[Katars]`, and `[Swords]`; armor has `[Body Armor]`, `[Helms]`,
+  `[Shields]`, and class-specific sections. Each equipment section separates
+  Normal, Exceptional, and Elite bases with comments. Thrown gas and fire
+  potions have a separate `[Throwable Potions]` section. For example:
 
-An unrecognized potion setting falls back to `Any`. If the label hook does not match the running client, jmod leaves labels unfiltered.
+  ```ini
+  [Runes]
+  El Rune=0x00
 
-Restart the game after changing the INI. The patch is tied to the supplied 1.09b binaries and their pointer layout.
+  [Potions]
+  Minor Healing Potion=0x00
+
+  [Swords]
+  War Sword=0x14
+  ```
+
+  Existing `[Items]`, `[Weapons]`, and `[Armor]` entries still work. An item
+  in its new specific section overrides the same item in an older section.
+
+Unknown item codes and quality values remain visible. A missing or invalid
+item setting defaults to `0x3F`. The old `MinHealthPotion`, `MinManaPotion`,
+and `MinRejuvenationPotion` settings are no longer used; migrate their choices
+to `loot_filter.ini`. If the label hook does not match the running client,
+jmod leaves labels unfiltered.
+
+The named list excludes legacy entries and codes absent from the supplied
+1.09b item tables. The active `hp3` and `mp3` entries appear simply as
+`Healing Potion` and `Mana Potion`.
+Excluded codes remain visible if they appear in a game; the filter leaves
+unknown item codes alone. The running record of exclusions, evidence, and
+remaining drop-path checks is in [docs/loot-filter-exclusions.md](docs/loot-filter-exclusions.md).
+
+Restart the game after changing either INI. The patch is tied to the supplied 1.09b binaries and their pointer layout.
 
 ## Installation
 
@@ -88,13 +119,13 @@ Restart the game after changing the INI. The patch is tied to the supplied 1.09b
 1. Make a copy of your Diablo II 1.09b folder.
 2. Rename the original `D2Win.dll` in that copy to `D2Win_original.dll`.
 3. Copy the built `build/D2Win.dll` into the game folder beside `D2Win_original.dll`.
-4. Copy `jmod.ini` into the same folder if it is not already present.
+4. Copy `jmod.ini` and `loot_filter.ini` into the same folder as the DLL.
 5. Launch the game from the copy and test in single-player.
 
 ### PlugY method
 
 1. Restore the original `D2Win.dll` if the proxy was previously installed.
-2. Copy the built `build/jmod.dll` into the game folder.
+2. Copy the built `build/jmod.dll` and `loot_filter.ini` into the game folder.
 3. Add `jmod.dll` to PlugY's `[GENERAL] DllToLoad` list.
 4. Start the game through PlugY and verify the features.
 
@@ -132,11 +163,13 @@ The output is placed under `build/` and the repository is configured to ignore g
 │   ├── config.c/.h        # INI parsing and options
 │   ├── game_ui.h          # Escape menu state
 │   ├── item_labels.c/.h   # item label toggle and drawing
+│   ├── item_names.h       # item type names used by the loot filter
 │   ├── jmod.c             # DLL startup, window discovery, message hook
 │   ├── loot_filter.c/.h   # ground item label filter
 │   ├── quick_cast.c/.h    # skill key handling and simulated mouse input
 │   └── rune_color.c/.h    # optional rune name color
 ├── jmod.ini               # default runtime settings
+├── loot_filter.ini        # per-item quality masks
 ├── D2Win.def              # export definition file for the proxy build
 ├── Makefile               # build rules
 ├── .gitignore             # ignores generated files
