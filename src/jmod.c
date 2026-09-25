@@ -4,7 +4,7 @@
 #include "config.h"
 #include "item_labels.h"
 #include "quick_cast.h"
-#include "auto_gold.h"
+#include "auto_gold_pickup.h"
 #include "game_ui.h"
 #include "rune_color.h"
 #include "loot_filter.h"
@@ -33,7 +33,7 @@ static LRESULT CALLBACK on_message(int code, WPARAM removed, LPARAM value)
         msg->message = WM_NULL;
         return CallNextHookEx(message_hook, code, removed, value);
     }
-    if (auto_gold_on_message(msg, game_window) ||
+    if (auto_gold_pickup_on_message(msg, game_window) ||
         quick_cast_on_message(msg, game_window)) {
         msg->message = WM_NULL;
         return CallNextHookEx(message_hook, code, removed, value);
@@ -101,7 +101,7 @@ static DWORD WINAPI start_hook(void *unused)
     if (config.rune_color && !rune_color_init())
         config.rune_color = 0;
     quick_cast_init(config.quick_cast);
-    auto_gold_init(&config);
+    auto_gold_pickup_init(&config);
     if (config.ctrl_click_actions && !ctrl_click_actions_init(&config))
         config.ctrl_click_actions = 0;
     if (!loot_filter_init(&config, module))
@@ -129,7 +129,7 @@ static DWORD WINAPI start_hook(void *unused)
             quick_cast_release_all();
             UnhookWindowsHookEx(message_hook);
             message_hook = NULL;
-            auto_gold_reset();
+            auto_gold_pickup_reset();
             ctrl_click_actions_reset();
             was_focused = 0;
             was_game_active = 0;
@@ -150,11 +150,11 @@ static DWORD WINAPI start_hook(void *unused)
             quick_cast_resync_keys();
         }
         if (!active && was_game_active) {
-            auto_gold_reset();
+            auto_gold_pickup_reset();
             ctrl_click_actions_reset();
         }
 
-        auto_gold_poll(found, message_hook != NULL);
+        auto_gold_pickup_poll(found, message_hook != NULL);
         ctrl_click_actions_poll(found, message_hook != NULL);
         if (!focused || !active) {
             quick_cast_release_all();
@@ -169,7 +169,7 @@ static DWORD WINAPI start_hook(void *unused)
             Sleep(CTRL_CLICK_ACTIONS_POLL_INTERVAL_MS);
         else
             Sleep(config.auto_gold_pickup && active ?
-                  AUTO_GOLD_SCAN_INTERVAL_MS : 100);
+                  AUTO_GOLD_PICKUP_SCAN_INTERVAL_MS : 100);
     }
     return 0;
 }

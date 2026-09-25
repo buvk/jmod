@@ -185,7 +185,7 @@ The output is placed under `build/` and the repository is configured to ignore g
 .
 ├── build/                 # compiled DLLs produced by make
 ├── src/
-│   ├── auto_gold.c/.h     # automatic gold pickup
+│   ├── auto_gold_pickup.c/.h # automatic gold pickup
 │   ├── config.c/.h        # INI parsing and options
 │   ├── ctrl_click_actions.c/.h # Ctrl+left-click transfer/sell/drop actions
 │   ├── d2_109b.c/.h       # 1.09b compatibility check, offsets, and ordinals

@@ -1,6 +1,6 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#include "auto_gold.h"
+#include "auto_gold_pickup.h"
 #include "game_ui.h"
 #include "d2_109b.h"
 
@@ -70,7 +70,7 @@ static int gold_recently_requested(DWORD id, DWORD now)
     for (i = 0; i < RECENT_GOLD_COUNT; ++i) {
         if (recent_gold[i].used && recent_gold[i].id == id)
             return (DWORD)(now - recent_gold[i].at) <
-                   AUTO_GOLD_RETRY_INTERVAL_MS;
+                   AUTO_GOLD_PICKUP_RETRY_INTERVAL_MS;
     }
     return 0;
 }
@@ -123,7 +123,7 @@ static void pick_up_nearby_gold_locked(void)
        exports once. */
 
     now = GetTickCount();
-    if ((DWORD)(now - last_gold_at) < AUTO_GOLD_REQUEST_INTERVAL_MS)
+    if ((DWORD)(now - last_gold_at) < AUTO_GOLD_PICKUP_REQUEST_INTERVAL_MS)
         return;
 
     items = (const BYTE *const *)(client + D2CLIENT_UNIT_HASH_TABLES_OFFSET +
@@ -169,13 +169,13 @@ static void pick_up_nearby_gold(void)
     LeaveCriticalSection(&gold_lock);
 }
 
-void auto_gold_init(const D2ModConfig *options)
+void auto_gold_pickup_init(const D2ModConfig *options)
 {
     InitializeCriticalSection(&gold_lock);
     config = options;
 }
 
-void auto_gold_reset(void)
+void auto_gold_pickup_reset(void)
 {
     InterlockedExchange(&gold_message_pending, 0);
     EnterCriticalSection(&gold_lock);
@@ -185,7 +185,7 @@ void auto_gold_reset(void)
     LeaveCriticalSection(&gold_lock);
 }
 
-void auto_gold_poll(HWND game_window, int hooked)
+void auto_gold_pickup_poll(HWND game_window, int hooked)
 {
     if (config && config->auto_gold_pickup && game_active() &&
         !game_menu_open() && hooked && game_window &&
@@ -195,7 +195,7 @@ void auto_gold_poll(HWND game_window, int hooked)
         InterlockedExchange(&gold_message_pending, 0);
 }
 
-int auto_gold_on_message(MSG *msg, HWND game_window)
+int auto_gold_pickup_on_message(MSG *msg, HWND game_window)
 {
     if (msg->message != PICKUP_GOLD_MESSAGE)
         return 0;
