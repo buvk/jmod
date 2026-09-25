@@ -66,7 +66,10 @@ Meaning of the settings:
   names that differ keep their original color.
   Remove any previously installed orange-rune `.tbl` overrides before testing
   this option, to avoid coloring the names twice.
-- `GoldPickupRange`: radius in map tiles, clamped to 1–6.
+- `GoldPickupRange`: pickup range using the same D2Common distance calculation
+  used by D2Game, clamped to 1–4. `4` is the maximum range at which
+  D2Game 1.09b performs an immediate item pickup instead of starting a
+  move-toward-item interaction because of distance.
 - `GoldScanIntervalMs`, `GoldRequestIntervalMs`, `GoldRetryIntervalMs`: timing controls for gold scanning and pickup requests.
 - `[LootFilter] Enabled=1`: filter ground labels shown by the game's Show Items binding, including when `AlwaysShowItems` is on, and suppress their hover highlights. It does not delete items or change automatic gold pickup.
 - `MinGold`: hides piles below the specified amount; a pile of exactly that amount remains visible.

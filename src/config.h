@@ -3,6 +3,8 @@
 
 #include <windows.h>
 
+_Static_assert(sizeof(void *) == 4, "jmod requires a 32-bit x86 build");
+
 typedef struct D2ModConfig {
     int quick_cast;
     int always_show_items;

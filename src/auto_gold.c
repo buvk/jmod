@@ -4,26 +4,32 @@
 #include "game_ui.h"
 
 #define PICKUP_GOLD_MESSAGE (WM_APP + 0x313)
+#define GOLD_INTERACT_COLLISION_MASK 0x804
 static const D2ModConfig *config;
 static DWORD last_gold_at;
 static struct { DWORD id, at; } recent_gold[32];
 static volatile LONG gold_message_pending;
+static CRITICAL_SECTION gold_lock;
 
-static void pick_up_nearby_gold(void)
+static void pick_up_nearby_gold_locked(void)
 {
     BYTE *client = (BYTE *)GetModuleHandleA("D2Client.dll");
     HMODULE common = GetModuleHandleA("D2Common.dll");
     HMODULE net = GetModuleHandleA("D2Net.dll");
-    typedef int (__stdcall *unit_coord_fn)(const void *);
+    typedef int (__stdcall *unit_distance_fn)(const void *, const void *);
+    typedef int (__stdcall *unit_collision_fn)(const void *, const void *, int);
     typedef const void *(__stdcall *unit_room_fn)(const void *);
     typedef DWORD (__stdcall *room_level_fn)(const void *);
     typedef const BYTE *(__stdcall *item_text_fn)(DWORD);
     typedef void (__stdcall *send_packet_fn)(DWORD, const BYTE *, DWORD);
-    unit_coord_fn unit_x, unit_y;
+    unit_distance_fn unit_distance;
+    unit_collision_fn unit_collision;
     unit_room_fn unit_room;
     room_level_fn room_level;
     item_text_fn item_text;
     send_packet_fn send_packet;
+    union { FARPROC raw; unit_distance_fn typed; } unit_distance_export;
+    union { FARPROC raw; unit_collision_fn typed; } unit_collision_export;
     union { FARPROC raw; item_text_fn typed; } item_text_export;
     union { FARPROC raw; send_packet_fn typed; } send_packet_export;
     union { FARPROC raw; unit_room_fn typed; } unit_room_export;
@@ -33,7 +39,6 @@ static void pick_up_nearby_gold(void)
     const BYTE *record;
     BYTE packet[13];
     DWORD id, now, level;
-    int x, y, ix, iy;
     unsigned bucket, visited, slot;
     const BYTE *const *items;
 
@@ -60,17 +65,23 @@ static void pick_up_nearby_gold(void)
             return;
     }
 
-    unit_x = (unit_coord_fn)GetProcAddress(common, MAKEINTRESOURCEA(10327));
-    unit_y = (unit_coord_fn)GetProcAddress(common, MAKEINTRESOURCEA(10330));
+    /* D2Game 1.09b uses D2Common ordinal 10399 for its item interaction
+       range check. Use the same calculation instead of approximating it
+       with Euclidean tile distance. */
+    unit_distance_export.raw = GetProcAddress(common, MAKEINTRESOURCEA(10399));
+    /* D2Game 1.09b uses ordinal 10363 with mask 0x804 immediately after
+       its <= 4 distance check. A nonzero result makes it walk toward the
+       item instead of picking it up immediately. */
+    unit_collision_export.raw = GetProcAddress(common, MAKEINTRESOURCEA(10363));
     item_text_export.raw = GetProcAddress(common, MAKEINTRESOURCEA(10600));
     send_packet_export.raw = GetProcAddress(net, MAKEINTRESOURCEA(10005));
+    unit_distance = unit_distance_export.typed;
+    unit_collision = unit_collision_export.typed;
     item_text = item_text_export.typed;
     send_packet = send_packet_export.typed;
-    if (!unit_x || !unit_y || !item_text || !send_packet)
+    if (!unit_distance || !unit_collision || !item_text || !send_packet)
         return;
 
-    x = unit_x(player) >> 16;
-    y = unit_y(player) >> 16;
     now = GetTickCount();
     if ((DWORD)(now - last_gold_at) < config->gold_request_interval_ms)
         return;
@@ -90,11 +101,8 @@ static void pick_up_nearby_gold(void)
             record = item_text(*(const DWORD *)(item + 0x04));
             if (!record || *(const DWORD *)(record + 0x144) != 0x20646c67)
                 continue;
-            ix = (unit_x(item) >> 16) - x;
-            iy = (unit_y(item) >> 16) - y;
-            if (ix < -config->gold_pickup_range || ix > config->gold_pickup_range ||
-                iy < -config->gold_pickup_range || iy > config->gold_pickup_range ||
-                ix * ix + iy * iy > config->gold_pickup_range * config->gold_pickup_range)
+            if (unit_distance(player, item) > config->gold_pickup_range ||
+                unit_collision(player, item, GOLD_INTERACT_COLLISION_MASK))
                 continue;
             packet[0] = 0x16;
             *(DWORD *)(packet + 1) = 4;
@@ -110,14 +118,26 @@ static void pick_up_nearby_gold(void)
     }
 }
 
+static void pick_up_nearby_gold(void)
+{
+    EnterCriticalSection(&gold_lock);
+    pick_up_nearby_gold_locked();
+    LeaveCriticalSection(&gold_lock);
+}
+
 void auto_gold_init(const D2ModConfig *options)
 {
+    InitializeCriticalSection(&gold_lock);
     config = options;
 }
 
 void auto_gold_reset(void)
 {
     InterlockedExchange(&gold_message_pending, 0);
+    EnterCriticalSection(&gold_lock);
+    last_gold_at = 0;
+    ZeroMemory(recent_gold, sizeof(recent_gold));
+    LeaveCriticalSection(&gold_lock);
 }
 
 void auto_gold_poll(HWND game_window, int hooked)

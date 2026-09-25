@@ -50,8 +50,10 @@ void read_options(HMODULE module, D2ModConfig *config)
     config->gold_pickup_range = GetPrivateProfileIntA("Mods", "GoldPickupRange", 4, path);
     if (config->gold_pickup_range < 1)
         config->gold_pickup_range = 1;
-    if (config->gold_pickup_range > 6)
-        config->gold_pickup_range = 6;
+    /* D2Game 1.09b picks an item up immediately only at distance <= 4.
+       Larger values make the interaction path move the player toward it. */
+    if (config->gold_pickup_range > 4)
+        config->gold_pickup_range = 4;
 
     value = GetPrivateProfileIntA("Mods", "GoldScanIntervalMs", 30, path);
     config->gold_scan_interval_ms = (DWORD)(value < 10 ? 10 : value > 1000 ? 1000 : value);

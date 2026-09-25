@@ -5,6 +5,7 @@ CPPFLAGS ?= -Isrc
 CFLAGS ?= -std=c11 -O2 -Wall -Wextra
 LIBS = -luser32
 SRC = src/jmod.c src/config.c src/item_labels.c src/quick_cast.c src/auto_gold.c src/rune_color.c src/loot_filter.c
+HDR = $(wildcard src/*.h)
 OUTDIR = build
 
 .PHONY: all clean
@@ -13,10 +14,10 @@ all: $(OUTDIR)/D2Win.dll $(OUTDIR)/jmod.dll
 $(OUTDIR):
 	mkdir -p $@
 
-$(OUTDIR)/D2Win.dll: $(SRC) D2Win.def | $(OUTDIR)
+$(OUTDIR)/D2Win.dll: $(SRC) $(HDR) D2Win.def | $(OUTDIR)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -shared -o $@ $(SRC) D2Win.def $(LIBS)
 
-$(OUTDIR)/jmod.dll: $(SRC) | $(OUTDIR)
+$(OUTDIR)/jmod.dll: $(SRC) $(HDR) | $(OUTDIR)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -shared -o $@ $(SRC) $(LIBS)
 
 clean:
