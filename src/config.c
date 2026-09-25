@@ -10,6 +10,7 @@ static void set_defaults(D2ModConfig *config)
     config->rune_color = 1;
     config->gold_pickup_range = 4;
     config->loot_filter_enabled = 0;
+    config->loot_filter_in_town = 0;
     config->min_gold = 0;
 }
 
@@ -53,6 +54,7 @@ void read_options(HMODULE module, D2ModConfig *config)
         config->gold_pickup_range = 4;
 
     config->loot_filter_enabled = GetPrivateProfileIntA("LootFilter", "Enabled", 0, path) != 0;
+    config->loot_filter_in_town = GetPrivateProfileIntA("LootFilter", "FilterInTown", 0, path) != 0;
     value = GetPrivateProfileIntA("LootFilter", "MinGold", 0, path);
     config->min_gold = value < 0 ? 0 : value;
 }

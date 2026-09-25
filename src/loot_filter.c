@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include "loot_filter.h"
 #include "item_names.h"
+#include "game_ui.h"
 
 static const D2ModConfig *filter_options;
 static const BYTE *(__stdcall *get_item_text)(DWORD);
@@ -42,6 +43,12 @@ static int show_ground_item(const BYTE *item)
     DWORD code;
     int index, bit;
 
+    if (!filter_options || !filter_options->loot_filter_enabled)
+        return 1;
+    if (!filter_options->loot_filter_in_town &&
+        game_town_state() == GAME_TOWN_YES)
+        return 1;
+
     /* If an item cannot be classified, leave its label visible. */
     if (!item || *(const DWORD *)item != 4 ||
         !get_item_text || !get_unit_stat)
@@ -61,8 +68,7 @@ static int show_ground_item(const BYTE *item)
 
 int loot_filter_show_item(const void *item)
 {
-    return !filter_options || !filter_options->loot_filter_enabled ||
-           show_ground_item((const BYTE *)item);
+    return show_ground_item((const BYTE *)item);
 }
 
 /* The draw-site filter only removes labels. The client obtains its hovered

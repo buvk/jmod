@@ -18,27 +18,21 @@ static void pick_up_nearby_gold_locked(void)
     HMODULE net = GetModuleHandleA("D2Net.dll");
     typedef int (__stdcall *unit_distance_fn)(const void *, const void *);
     typedef int (__stdcall *unit_collision_fn)(const void *, const void *, int);
-    typedef const void *(__stdcall *unit_room_fn)(const void *);
-    typedef DWORD (__stdcall *room_level_fn)(const void *);
     typedef const BYTE *(__stdcall *item_text_fn)(DWORD);
     typedef void (__stdcall *send_packet_fn)(DWORD, const BYTE *, DWORD);
     unit_distance_fn unit_distance;
     unit_collision_fn unit_collision;
-    unit_room_fn unit_room;
-    room_level_fn room_level;
     item_text_fn item_text;
     send_packet_fn send_packet;
     union { FARPROC raw; unit_distance_fn typed; } unit_distance_export;
     union { FARPROC raw; unit_collision_fn typed; } unit_collision_export;
     union { FARPROC raw; item_text_fn typed; } item_text_export;
     union { FARPROC raw; send_packet_fn typed; } send_packet_export;
-    union { FARPROC raw; unit_room_fn typed; } unit_room_export;
-    union { FARPROC raw; room_level_fn typed; } room_level_export;
     const BYTE *player;
     const BYTE *item;
     const BYTE *record;
     BYTE packet[13];
-    DWORD id, now, level;
+    DWORD id, now;
     unsigned bucket, visited, slot;
     const BYTE *const *items;
 
@@ -50,20 +44,10 @@ static void pick_up_nearby_gold_locked(void)
         !*(const void *const *)(player + 0x38))
         return;
 
-    if (!config->gold_pickup_in_town) {
-        const void *room;
-        /* D2Common 1.09b: GetRoom(Unit*) and GetLevelID(Room*). */
-        unit_room_export.raw = GetProcAddress(common, MAKEINTRESOURCEA(10342));
-        room_level_export.raw = GetProcAddress(common, MAKEINTRESOURCEA(10057));
-        unit_room = unit_room_export.typed;
-        room_level = room_level_export.typed;
-        if (!unit_room || !room_level || !(room = unit_room(player)))
-            return;
-        level = room_level(room);
-        if (level == 0 || level == 1 || level == 40 || level == 75 ||
-            level == 103 || level == 109)
-            return;
-    }
+    /* Preserve the old fail-closed behavior: when town detection is
+       unavailable, do not auto-pick gold if town pickup is disabled. */
+    if (!config->gold_pickup_in_town && game_town_state() != GAME_TOWN_NO)
+        return;
 
     /* D2Game 1.09b uses D2Common ordinal 10399 for its item interaction
        range check. Use the same calculation instead of approximating it

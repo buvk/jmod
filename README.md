@@ -39,6 +39,8 @@ GoldPickupRange=4
 [LootFilter]
 ; 0 = off, 1 = on. Hides ground labels and their hover highlights.
 Enabled=1
+; 0 = suspend filtering in town, 1 = keep filtering in town.
+FilterInTown=0
 ; Hide gold piles smaller than this amount. 0 shows all piles.
 MinGold=500
 ; Set individual item masks in loot_filter.ini.
@@ -71,6 +73,7 @@ Meaning of the settings:
   pickup requests, and 200 ms before retrying the same pile. The 40 ms values
   match Diablo II's 25 Hz game simulation.
 - `[LootFilter] Enabled=1`: filter ground labels shown by the game's Show Items binding, including when `AlwaysShowItems` is on, and suppress their hover highlights. It does not delete items or change automatic gold pickup.
+- `FilterInTown=0`: suspend the loot filter while the player is in town; set to `1` to apply the filter in town too. Leaving town automatically restores filtering.
 - `MinGold`: hides piles below the specified amount; a pile of exactly that amount remains visible.
 - `loot_filter.ini`: each named item type has a hex quality mask. `0x01` shows
   normal, inferior, and superior; `0x02` magic; `0x04` rare; `0x08` set;

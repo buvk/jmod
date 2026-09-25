@@ -13,6 +13,7 @@ typedef struct D2ModConfig {
     int rune_color;
     int gold_pickup_range;
     int loot_filter_enabled;
+    int loot_filter_in_town;
     int min_gold;
 } D2ModConfig;
 
