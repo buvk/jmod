@@ -93,7 +93,7 @@
 #define D2ITEM_MODE_STORED                         0u
 #define D2ITEM_MODE_GROUND                         3u
 
-/* Inventory/stash grid descriptors used by the 1.09b click handler. */
+/* Inventory/container grid descriptors used by the 1.09b click handler. */
 #define D2CLIENT_INVENTORY_GRID_LEFT_OFFSET        0x04u
 #define D2CLIENT_INVENTORY_GRID_TOP_OFFSET         0x0cu
 #define D2CLIENT_INVENTORY_GRID_CELL_WIDTH_OFFSET  0x14u

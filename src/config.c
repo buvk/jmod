@@ -55,8 +55,6 @@ void read_options(HMODULE module, D2ModConfig *config)
        Larger values make the interaction path move the player toward it. */
     if (config->gold_pickup_range > D2ITEM_IMMEDIATE_PICKUP_MAX_DISTANCE)
         config->gold_pickup_range = D2ITEM_IMMEDIATE_PICKUP_MAX_DISTANCE;
-    config->ctrl_click_actions = 0;
-
     config->ctrl_click_actions = GetPrivateProfileIntA(
         "Mods", "CtrlClickActions", 0, path) != 0;
 

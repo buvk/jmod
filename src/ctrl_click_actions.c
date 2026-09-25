@@ -437,8 +437,8 @@ static int begin_quick_move(void *player, void *inventory,
         return 1;
 
     if (!drop_to_ground) {
-        /* The open container decides the destination: stash or Horadric Cube.
-           Never try to put the Cube item inside itself. */
+        /* The open container decides the destination: trade, stash, or
+           Horadric Cube. Never try to put the Cube item inside itself. */
         if (target_page == D2INVPAGE_CUBE &&
             *(const DWORD *)((const BYTE *)item + D2UNIT_CLASS_ID_OFFSET) ==
                 D2ITEM_HORADRIC_CUBE_CLASS_ID)

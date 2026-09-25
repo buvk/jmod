@@ -1,11 +1,12 @@
 # jmod (juice mod) for Diablo II 1.09b
 
-`jmod` patches a specific Diablo II 1.09b install with five helpers:
+`jmod` patches a specific Diablo II 1.09b install with six helpers:
 
 - Quick Cast for keyboard-bound skills
 - Toggleable item labels via the in-game Show Items binding
 - Automatic gold pickup near the character
 - Optional orange rune names (no MPQ replacement or `-direct -txt` needed)
+- Ctrl+left-click quick transfer, sell, and drop actions
 - Ground-label filtering by item name and quality, plus small gold piles
 
 The code is split into a small modular layout under `src/` and builds both DLL variants from the same source files.
@@ -25,7 +26,7 @@ Both variants read `jmod.ini` and `loot_filter.ini` from the same folder as the 
 
 ## Default configuration
 
-The bundled `jmod.ini` enables all five helpers by default:
+The bundled `jmod.ini` enables all six helpers by default:
 
 ```ini
 [Mods]
@@ -35,6 +36,7 @@ AutoGoldPickup=1
 GoldPickupInTown=0
 RuneColor=1
 GoldPickupRange=4
+CtrlClickActions=1
 
 [LootFilter]
 ; 0 = off, 1 = on. Hides ground labels and their hover highlights.
@@ -69,6 +71,12 @@ Meaning of the settings:
   used by D2Game, clamped to 1–4. `4` is the maximum range at which
   D2Game 1.09b performs an immediate item pickup instead of starting a
   move-toward-item interaction because of distance.
+- `CtrlClickActions=1`: enables Ctrl+left-click item actions. With the stash,
+  Horadric Cube, or player trade window open, items move between that container
+  and inventory. With a merchant store open, inventory items sell directly.
+  With only the normal inventory open, inventory items drop to the ground.
+  Ctrl+left-clicking a belt potion also drops it to the ground. Ctrl+Shift
+  remains available for vanilla behavior.
 - Auto-gold timing is fixed at a 40 ms scan interval, 40 ms minimum between
   pickup requests, and 200 ms before retrying the same pile. The 40 ms values
   match Diablo II's 25 Hz game simulation.
@@ -179,6 +187,7 @@ The output is placed under `build/` and the repository is configured to ignore g
 ├── src/
 │   ├── auto_gold.c/.h     # automatic gold pickup
 │   ├── config.c/.h        # INI parsing and options
+│   ├── ctrl_click_actions.c/.h # Ctrl+left-click transfer/sell/drop actions
 │   ├── d2_109b.c/.h       # 1.09b compatibility check, offsets, and ordinals
 │   ├── game_ui.h          # active-game and Escape-menu state
 │   ├── item_labels.c/.h   # item label toggle and drawing
