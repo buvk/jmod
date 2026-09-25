@@ -176,7 +176,9 @@ int item_labels_on_message(MSG *msg, HWND game_window)
         msg->message == WM_LBUTTONDOWN &&
         GetForegroundWindow() == game_window) {
         BYTE *client = (BYTE *)GetModuleHandleA("D2Client.dll");
-        if (client && !game_menu_open()) {
+        if (client &&
+            *(const void *const *)(client + 0x127578) &&
+            !game_menu_open()) {
             if (*(DWORD *)(client + 0x116dd0) &&
                 is_interactive_target(*(DWORD *)(client + 0x116db8)))
                 refresh_object_target(client);
