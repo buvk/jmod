@@ -19,7 +19,12 @@
 #define D2CLIENT_UI_MODE_STASH                     12u
 #define D2CLIENT_UI_MODE_CUBE                      14u
 #define D2CLIENT_CURSOR_ITEM_PTR_OFFSET             0x12c2a8u
+#define D2CLIENT_UI_INVENTORY_STATE_OFFSET          0x125a38u
 #define D2CLIENT_UI_NPCSHOP_STATE_OFFSET            0x125a64u
+#define D2CLIENT_UI_SPECIAL_STATE_OFFSET            0x125a6cu
+#define D2CLIENT_UI_TRADE_STATE_OFFSET              0x125a90u
+#define D2CLIENT_UI_STASH_STATE_OFFSET              0x125a98u
+#define D2CLIENT_UI_CUBE_STATE_OFFSET               0x125a9cu
 #define D2CLIENT_DIFFICULTY_OFFSET                  0x111d5cu
 #define D2CLIENT_INTERACTED_NPC_ID_OFFSET           0x12115du
 #define D2CLIENT_INTERACTED_NPC_ACTIVE_OFFSET       0x121161u
@@ -126,6 +131,11 @@
 /* Item interaction rules verified in D2Game 1.09b. */
 #define D2ITEM_IMMEDIATE_PICKUP_MAX_DISTANCE       4
 #define D2ITEM_INTERACT_COLLISION_MASK             0x804
+
+/* Client-to-server cursor-item drop packet. */
+#define D2NET_PACKET_DROP_ITEM                     0x17u
+#define D2NET_PACKET_DROP_ITEM_SIZE                5u
+#define D2NET_PACKET_DROP_ITEM_ID_OFFSET           1u
 
 /* Client-to-server grid placement packet. */
 #define D2NET_PACKET_INSERT_ITEM                   0x18u

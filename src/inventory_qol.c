@@ -35,6 +35,7 @@ typedef struct PendingQuickMove {
     DWORD target_page;
     DWORD ui_mode;
     int target_record;
+    int drop_to_ground;
     void *inventory;
 } PendingQuickMove;
 
@@ -202,12 +203,37 @@ static void send_insert_item(DWORD item_id, int x, int y, DWORD page)
     (void)send_packet(0, packet, sizeof(packet));
 }
 
+static void send_drop_item(DWORD item_id)
+{
+    BYTE packet[D2NET_PACKET_DROP_ITEM_SIZE] = { 0 };
+
+    packet[0] = D2NET_PACKET_DROP_ITEM;
+    CopyMemory(packet + D2NET_PACKET_DROP_ITEM_ID_OFFSET,
+               &item_id, sizeof(item_id));
+    (void)send_packet(0, packet, sizeof(packet));
+}
+
 static int merchant_shop_open(void)
 {
     return client_base &&
         *(const DWORD *)(client_base + D2CLIENT_UI_NPCSHOP_STATE_OFFSET) != 0 &&
         *(const DWORD *)(client_base + D2CLIENT_INTERACTED_NPC_ACTIVE_OFFSET) != 0 &&
         *(const DWORD *)(client_base + D2CLIENT_INTERACTED_NPC_ID_OFFSET) != 0;
+}
+
+static int normal_inventory_open(void)
+{
+    if (!client_base)
+        return 0;
+
+    /* D2Client's UI-state array starts at +0x125a34. Inventory is index 1;
+       exclude the other panels that expose or overlap inventory handling. */
+    return *(const DWORD *)(client_base + D2CLIENT_UI_INVENTORY_STATE_OFFSET) != 0 &&
+        *(const DWORD *)(client_base + D2CLIENT_UI_NPCSHOP_STATE_OFFSET) == 0 &&
+        *(const DWORD *)(client_base + D2CLIENT_UI_SPECIAL_STATE_OFFSET) == 0 &&
+        *(const DWORD *)(client_base + D2CLIENT_UI_TRADE_STATE_OFFSET) == 0 &&
+        *(const DWORD *)(client_base + D2CLIENT_UI_STASH_STATE_OFFSET) == 0 &&
+        *(const DWORD *)(client_base + D2CLIENT_UI_CUBE_STATE_OFFSET) == 0;
 }
 
 static void send_sell_item(void *player, void *item)
@@ -300,9 +326,10 @@ static int begin_quick_move(void *player, void *inventory,
 {
     void *item;
     int source_x, source_y, item_x, item_y;
-    int source_record, target_record;
+    int source_record, target_record = -1;
     int free_x, free_y;
-    DWORD target_page, ui_mode;
+    int drop_to_ground = 0;
+    DWORD target_page = 0, ui_mode = 0;
 
     if (!config || !config->inventory_quick_move ||
         !(mouse_flags & MK_CONTROL) || (mouse_flags & MK_SHIFT))
@@ -311,8 +338,14 @@ static int begin_quick_move(void *player, void *inventory,
     if (!player || !inventory || get_cursor_item(inventory))
         return 0;
 
-    if (!quick_move_target(source_page, &target_page, &ui_mode))
-        return 0;
+    if (!quick_move_target(source_page, &target_page, &ui_mode)) {
+        /* With only the ordinary inventory panel open, Ctrl+click drops the
+           item. Special inventory-facing UIs are deliberately excluded. */
+        if (source_page != D2INVPAGE_INVENTORY ||
+            !normal_inventory_open())
+            return 0;
+        drop_to_ground = 1;
+    }
 
     if (!screen_to_grid(source_grid, mouse_x, mouse_y,
                         &source_x, &source_y))
@@ -336,24 +369,26 @@ static int begin_quick_move(void *player, void *inventory,
         get_item_page(item) != (BYTE)source_page)
         return 1;
 
-    /* The open container decides the destination: stash or Horadric Cube.
-       Never try to put the Cube item inside itself. */
-    if (target_page == D2INVPAGE_CUBE &&
-        *(const DWORD *)((const BYTE *)item + D2UNIT_CLASS_ID_OFFSET) ==
-            D2ITEM_HORADRIC_CUBE_CLASS_ID)
-        return 1;
+    if (!drop_to_ground) {
+        /* The open container decides the destination: stash or Horadric Cube.
+           Never try to put the Cube item inside itself. */
+        if (target_page == D2INVPAGE_CUBE &&
+            *(const DWORD *)((const BYTE *)item + D2UNIT_CLASS_ID_OFFSET) ==
+                D2ITEM_HORADRIC_CUBE_CLASS_ID)
+            return 1;
 
-    target_record = get_inventory_record_id(
-        player, (int)target_page, is_expansion() != 0);
-    if (target_record < 0)
-        return 1;
+        target_record = get_inventory_record_id(
+            player, (int)target_page, is_expansion() != 0);
+        if (target_record < 0)
+            return 1;
 
-    /* Do not pick the source item up if the opposite container is already
-       full. D2Common uses the same grid rules the game uses for placement. */
-    free_x = free_y = 0;
-    if (!get_free_position(inventory, item, target_record,
-                           &free_x, &free_y, (BYTE)target_page))
-        return 1;
+        /* Do not pick the source item up if the opposite container is already
+           full. D2Common uses the same grid rules the game uses for placement. */
+        free_x = free_y = 0;
+        if (!get_free_position(inventory, item, target_record,
+                               &free_x, &free_y, (BYTE)target_page))
+            return 1;
+    }
 
     EnterCriticalSection(&state_lock);
     if (pending_active_locked()) {
@@ -368,6 +403,7 @@ static int begin_quick_move(void *player, void *inventory,
     pending.target_page = target_page;
     pending.ui_mode = ui_mode;
     pending.target_record = target_record;
+    pending.drop_to_ground = drop_to_ground;
     pending.inventory = inventory;
     visual.active = 1;
     visual.seen_on_cursor = 0;
@@ -432,7 +468,15 @@ static int finish_pending(DWORD generation)
     move = pending;
     LeaveCriticalSection(&state_lock);
 
-    if (!game_active() || current_ui_mode() != move.ui_mode) {
+    if (!game_active()) {
+        inventory_qol_reset();
+        return 1;
+    }
+
+    /* Container moves keep their strict UI-mode guard. A ground drop was
+       already validated when it started; exact cursor-item identity below is
+       the authoritative completion guard. */
+    if (!move.drop_to_ground && current_ui_mode() != move.ui_mode) {
         inventory_qol_reset();
         return 1;
     }
@@ -444,8 +488,19 @@ static int finish_pending(DWORD generation)
     if (*(const DWORD *)cursor_item != D2UNIT_ITEM ||
         *(const DWORD *)((const BYTE *)cursor_item + D2UNIT_ID_OFFSET) !=
             move.item_id) {
-        /* Never place whatever happens to be on the cursor later. */
+        /* Never place/drop whatever happens to be on the cursor later. */
         inventory_qol_reset();
+        return 1;
+    }
+
+    if (move.drop_to_ground) {
+        /* Keep the same safe ordering as container quick-move: vanilla 0x19
+           first, then only after this exact item is confirmed on the cursor
+           send the vanilla 0x17 ground-drop request. */
+        EnterCriticalSection(&state_lock);
+        clear_pending_locked();
+        LeaveCriticalSection(&state_lock);
+        send_drop_item(move.item_id);
         return 1;
     }
 
