@@ -54,6 +54,19 @@ static BOOL CALLBACK find_window(HWND hwnd, LPARAM value)
     return TRUE;
 }
 
+static int cached_window_valid(HWND hwnd, DWORD thread)
+{
+    DWORD process;
+    DWORD actual_thread;
+
+    if (!hwnd || !thread || !IsWindow(hwnd) || !IsWindowVisible(hwnd) ||
+        GetWindow(hwnd, GW_OWNER) != NULL)
+        return 0;
+
+    actual_thread = GetWindowThreadProcessId(hwnd, &process);
+    return actual_thread == thread && process == GetCurrentProcessId();
+}
+
 static DWORD WINAPI start_hook(void *unused)
 {
     char singleton_name[64];
@@ -82,14 +95,20 @@ static DWORD WINAPI start_hook(void *unused)
     if (config.always_show_items && !item_labels_init())
         config.always_show_items = 0;
     for (;;) {
-        GameWindowMatch match = { NULL, 0 };
-        HWND found;
-        DWORD thread;
+        HWND found = game_window;
+        DWORD thread = game_thread;
         int focused;
         int active;
-        EnumWindows(find_window, (LPARAM)&match);
-        found = match.window;
-        thread = match.thread;
+
+        /* The game normally keeps the same top-level window for its entire
+           lifetime. Re-enumerate only when the cached handle disappears or
+           no longer matches the window/thread we originally hooked. */
+        if (!cached_window_valid(found, thread)) {
+            GameWindowMatch match = { NULL, 0 };
+            EnumWindows(find_window, (LPARAM)&match);
+            found = match.window;
+            thread = match.thread;
+        }
 
         if (message_hook && (!found || found != game_window ||
                              thread != game_thread || !IsWindow(found))) {
