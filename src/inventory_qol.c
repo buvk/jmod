@@ -25,6 +25,7 @@ typedef int (__stdcall *get_transaction_cost_fn)(
     void *, int, void *, int, int, int);
 typedef void (__cdecl *cursor_draw_fn)(void);
 typedef int (__fastcall *play_sound_fn)(DWORD, DWORD, DWORD, DWORD, DWORD);
+typedef void (__fastcall *item_id_packet_fn)(DWORD, DWORD);
 
 typedef struct PendingQuickMove {
     int active;
@@ -61,6 +62,7 @@ static is_not_quest_item_fn is_not_quest_item;
 static get_transaction_cost_fn get_transaction_cost;
 static cursor_draw_fn original_cursor_draw;
 static play_sound_fn play_sound;
+static item_id_packet_fn original_item_id_packet;
 static CRITICAL_SECTION state_lock;
 static int state_lock_ready;
 static PendingQuickMove pending;
@@ -163,6 +165,64 @@ static void clear_visual_locked(void)
     visual.seen_on_cursor = 0;
     visual.started_at = 0;
     visual.item_id = 0;
+}
+
+static int quick_drop_modifier_down(void)
+{
+    return (GetKeyState(VK_CONTROL) & 0x8000) != 0 &&
+        (GetKeyState(VK_SHIFT) & 0x8000) == 0;
+}
+
+static void arm_belt_quick_drop(DWORD item_id)
+{
+    void *player, *inventory;
+
+    if (!config || !config->inventory_quick_move || !state_lock_ready ||
+        !client_base || !quick_drop_modifier_down())
+        return;
+
+    player = *(void **)(client_base + D2CLIENT_PLAYER_PTR_OFFSET);
+    if (!player)
+        return;
+
+    /* Exact 1.09b UnitAny layout: current player's inventory is +0x84. */
+    inventory = *(void **)((BYTE *)player + D2UNIT_INVENTORY_OFFSET);
+    if (!inventory || get_cursor_item(inventory))
+        return;
+
+    EnterCriticalSection(&state_lock);
+    if (pending.active && !pending_active_locked()) {
+        clear_pending_locked();
+        clear_visual_locked();
+    }
+    if (!pending.active) {
+        pending.active = 1;
+        pending.message_queued = 0;
+        ++pending.generation;
+        pending.started_at = GetTickCount();
+        pending.item_id = item_id;
+        pending.target_page = 0;
+        pending.ui_mode = 0;
+        pending.target_record = -1;
+        pending.drop_to_ground = 1;
+        pending.inventory = inventory;
+
+        visual.active = 1;
+        visual.seen_on_cursor = 0;
+        visual.started_at = pending.started_at;
+        visual.item_id = item_id;
+    }
+    LeaveCriticalSection(&state_lock);
+}
+
+static void __fastcall belt_remove_packet_hook(DWORD packet_id, DWORD item_id)
+{
+    /* Preserve the exact vanilla 0x24 send first. This hook site is reached
+       only after D2Client has resolved an occupied belt slot for removal. */
+    original_item_id_packet(packet_id, item_id);
+
+    if ((BYTE)packet_id == D2NET_PACKET_REMOVE_BELT_ITEM)
+        arm_belt_quick_drop(item_id);
 }
 
 void inventory_qol_reset(void)
@@ -706,7 +766,7 @@ static int resolve_functions(void)
 
 int inventory_qol_init(const D2ModConfig *options)
 {
-    BYTE *inventory_site, *stash_site, *cube_site, *trade_site, *original;
+    BYTE *inventory_site, *stash_site, *cube_site, *trade_site, *belt_remove_site, *original;
     BYTE *draw_sites[6];
     DWORD old_inventory, old_stash, unused;
     DWORD i;
@@ -726,6 +786,7 @@ int inventory_qol_init(const D2ModConfig *options)
     stash_site = client_base + D2CLIENT_HOOK_STASH_CLICK_OFFSET;
     cube_site = client_base + D2CLIENT_HOOK_CUBE_CLICK_OFFSET;
     trade_site = client_base + D2CLIENT_HOOK_TRADE_CLICK_OFFSET;
+    belt_remove_site = client_base + D2CLIENT_HOOK_BELT_REMOVE_PACKET_OFFSET;
     draw_sites[0] = client_base + D2CLIENT_HOOK_DRAW_CURSOR_1_OFFSET;
     draw_sites[1] = client_base + D2CLIENT_HOOK_DRAW_CURSOR_2_OFFSET;
     draw_sites[2] = client_base + D2CLIENT_HOOK_DRAW_CURSOR_3_OFFSET;
@@ -735,7 +796,10 @@ int inventory_qol_init(const D2ModConfig *options)
     if (!call_target_matches(inventory_site, original) ||
         !call_target_matches(stash_site, original) ||
         !call_target_matches(cube_site, original) ||
-        !call_target_matches(trade_site, original))
+        !call_target_matches(trade_site, original) ||
+        !call_target_matches(
+            belt_remove_site,
+            client_base + D2CLIENT_FN_ITEM_ID_PACKET_OFFSET))
         return 0;
     for (i = 0; i < 6; ++i) {
         if (!call_target_matches(
@@ -750,6 +814,8 @@ int inventory_qol_init(const D2ModConfig *options)
         client_base + D2CLIENT_FN_DRAW_CURSOR_OFFSET);
     play_sound = (play_sound_fn)(
         client_base + D2CLIENT_FN_PLAY_SOUND_OFFSET);
+    original_item_id_packet = (item_id_packet_fn)(
+        client_base + D2CLIENT_FN_ITEM_ID_PACKET_OFFSET);
     is_expansion = (is_expansion_fn)(
         client_base + D2CLIENT_FN_IS_EXPANSION_OFFSET);
 
@@ -780,7 +846,8 @@ int inventory_qol_init(const D2ModConfig *options)
     VirtualProtect(inventory_site, 5, old_inventory, &unused);
 
     if (!patch_call(cube_site, inventory_click_hook) ||
-        !patch_call(trade_site, inventory_click_hook))
+        !patch_call(trade_site, inventory_click_hook) ||
+        !patch_call(belt_remove_site, belt_remove_packet_hook))
         return 0;
 
     for (i = 0; i < 6; ++i) {

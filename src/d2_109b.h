@@ -46,6 +46,7 @@
 #define D2CLIENT_FN_INVENTORY_CLICK_OFFSET         0x40b00u
 #define D2CLIENT_FN_DRAW_CURSOR_OFFSET              0xb6570u
 #define D2CLIENT_FN_PLAY_SOUND_OFFSET               0xb4360u
+#define D2CLIENT_FN_ITEM_ID_PACKET_OFFSET           0x0d360u
 
 /* D2Client patch sites. */
 #define D2CLIENT_HOOK_LOOT_LABEL_OFFSET            0x63bf9u
@@ -58,6 +59,7 @@
 #define D2CLIENT_HOOK_STASH_CLICK_OFFSET           0x40a2fu
 #define D2CLIENT_HOOK_TRADE_CLICK_OFFSET           0x40a99u
 #define D2CLIENT_HOOK_CUBE_CLICK_OFFSET            0x40976u
+#define D2CLIENT_HOOK_BELT_REMOVE_PACKET_OFFSET    0x5ae38u
 #define D2CLIENT_HOOK_DRAW_CURSOR_1_OFFSET          0x090d3u
 #define D2CLIENT_HOOK_DRAW_CURSOR_2_OFFSET          0x0aa65u
 #define D2CLIENT_HOOK_DRAW_CURSOR_3_OFFSET          0x35fffu
@@ -82,6 +84,7 @@
 #define D2UNIT_ID_OFFSET                           0x08u
 #define D2UNIT_MODE_OFFSET                         0x0cu
 #define D2UNIT_PATH_OFFSET                         0x38u
+#define D2UNIT_INVENTORY_OFFSET                    0x84u
 #define D2UNIT_HASH_NEXT_OFFSET                    0x108u
 #define D2UNIT_PLAYER                              0u
 #define D2UNIT_MONSTER                             1u
@@ -147,6 +150,9 @@
 #define D2NET_PACKET_INSERT_ITEM_X_OFFSET          5u
 #define D2NET_PACKET_INSERT_ITEM_Y_OFFSET          9u
 #define D2NET_PACKET_INSERT_ITEM_PAGE_OFFSET       13u
+
+/* Client-to-server belt item removal packet. */
+#define D2NET_PACKET_REMOVE_BELT_ITEM              0x24u
 
 /* Client-to-server NPC sell packet. */
 #define D2NET_PACKET_NPC_SELL                      0x33u
