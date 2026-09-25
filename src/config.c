@@ -1,15 +1,37 @@
 #include "config.h"
 #include <string.h>
 
+static void set_defaults(D2ModConfig *config)
+{
+    config->quick_cast = 1;
+    config->always_show_items = 1;
+    config->auto_gold_pickup = 1;
+    config->gold_pickup_in_town = 0;
+    config->rune_color = 1;
+    config->gold_pickup_range = 4;
+    config->gold_scan_interval_ms = 30;
+    config->gold_request_interval_ms = 50;
+    config->gold_retry_interval_ms = 500;
+    config->loot_filter_enabled = 0;
+    config->min_gold = 0;
+}
+
 void read_options(HMODULE module, D2ModConfig *config)
 {
     char path[MAX_PATH];
     char *slash;
     int value;
-    DWORD length = GetModuleFileNameA(module, path, MAX_PATH);
+    DWORD length;
 
     if (!config)
         return;
+
+    /* Keep usable defaults even if the INI path cannot be resolved. */
+    set_defaults(config);
+    if (!module)
+        return;
+
+    length = GetModuleFileNameA(module, path, MAX_PATH);
     if (!length || length >= MAX_PATH)
         return;
 

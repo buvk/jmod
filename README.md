@@ -51,13 +51,14 @@ Meaning of the settings:
 
 - `QuickCast=1`: holds the right mouse button while a bound skill key is held.
   Opening the Escape menu releases the simulated hold; a key held through the
-  menu must be released and pressed again before it can cast.
+  menu must be released and pressed again before it can cast. Quick Cast is
+  inactive in the front end and during game transitions.
 - `AlwaysShowItems=1`: makes the normal Show Items binding toggle labels on and off.
   Ground labels are drawn before the hover tooltip pass so inventory and
   equipment item stats can appear over labels. Ground labels and their hover
   targets are hidden while the Escape menu is open.
-- `AutoGoldPickup=1`: requests pickup of nearby gold piles while the game is
-  focused and the Escape menu is closed.
+- `AutoGoldPickup=1`: requests pickup of nearby gold piles while an active game
+  is focused and the Escape menu is closed.
 - `GoldPickupInTown=0`: skips automatic gold pickup in the five towns; set to `1` to allow it.
 - `RuneColor=1`: displays English rune names in orange through the game's
   string lookup. Set it to `0` to leave the original names unchanged. This option
@@ -105,10 +106,8 @@ jmod leaves labels unfiltered.
 
 The named list excludes legacy entries and codes absent from the supplied
 1.09b item tables. The active `hp3` and `mp3` entries appear simply as
-`Healing Potion` and `Mana Potion`.
-Excluded codes remain visible if they appear in a game; the filter leaves
-unknown item codes alone. The running record of exclusions, evidence, and
-remaining drop-path checks is in [docs/loot-filter-exclusions.md](docs/loot-filter-exclusions.md).
+`Healing Potion` and `Mana Potion`. Excluded codes remain visible if they
+appear in a game; the filter leaves unknown item codes alone.
 
 Restart the game after changing either INI. The patch is tied to the supplied 1.09b binaries and their pointer layout.
 
@@ -125,7 +124,7 @@ Restart the game after changing either INI. The patch is tied to the supplied 1.
 ### PlugY method
 
 1. Restore the original `D2Win.dll` if the proxy was previously installed.
-2. Copy the built `build/jmod.dll` and `loot_filter.ini` into the game folder.
+2. Copy `build/jmod.dll`, `jmod.ini`, and `loot_filter.ini` into the game folder.
 3. Add `jmod.dll` to PlugY's `[GENERAL] DllToLoad` list.
 4. Start the game through PlugY and verify the features.
 
@@ -161,7 +160,7 @@ The output is placed under `build/` and the repository is configured to ignore g
 ├── src/
 │   ├── auto_gold.c/.h     # automatic gold pickup
 │   ├── config.c/.h        # INI parsing and options
-│   ├── game_ui.h          # Escape menu state
+│   ├── game_ui.h          # active-game and Escape-menu state
 │   ├── item_labels.c/.h   # item label toggle and drawing
 │   ├── item_names.h       # item type names used by the loot filter
 │   ├── jmod.c             # DLL startup, window discovery, message hook
@@ -172,6 +171,7 @@ The output is placed under `build/` and the repository is configured to ignore g
 ├── loot_filter.ini        # per-item quality masks
 ├── D2Win.def              # export definition file for the proxy build
 ├── Makefile               # build rules
+├── .gitattributes         # consistent text line endings
 ├── .gitignore             # ignores generated files
 └── README.md              # this file
 ```

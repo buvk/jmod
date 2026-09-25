@@ -46,9 +46,15 @@ static void mouse_button(DWORD flag)
 
 void quick_cast_release_all(void)
 {
+    unsigned key;
     EnterCriticalSection(&input_lock);
-    ZeroMemory(held, sizeof(held));
-    ZeroMemory(blocked, sizeof(blocked));
+    /* Preserve held skill keys as blocked until their key-up (or a resync).
+       This prevents a held key from immediately casting after a transition. */
+    for (key = 0; key < 256; ++key) {
+        if (held[key])
+            blocked[key] = 1;
+        held[key] = 0;
+    }
     if (held_count || injected_rbutton_down)
         ++qc_generation; /* cancel commands queued for the old hold */
     held_count = 0;
@@ -95,7 +101,31 @@ void quick_cast_init(int enabled)
 int quick_cast_on_message(MSG *msg, HWND game_window)
 {
     unsigned key;
-    int menu_open = game_menu_open();
+    int menu_open;
+
+    /* Skill bindings and simulated world clicks are meaningful only while a
+       game is active. Still track key state in the front end so a key held
+       through game creation cannot cast from its first repeat. */
+    if (!game_active()) {
+        if (msg->message == QC_MESSAGE && msg->hwnd == game_window)
+            return 1;
+        key = (unsigned)msg->wParam;
+        if (msg->hwnd == game_window && key < 256) {
+            if (msg->message == WM_KEYDOWN || msg->message == WM_SYSKEYDOWN) {
+                EnterCriticalSection(&input_lock);
+                blocked[key] = 1;
+                LeaveCriticalSection(&input_lock);
+            } else if (msg->message == WM_KEYUP ||
+                       msg->message == WM_SYSKEYUP) {
+                EnterCriticalSection(&input_lock);
+                blocked[key] = 0;
+                LeaveCriticalSection(&input_lock);
+            }
+        }
+        return 0;
+    }
+
+    menu_open = game_menu_open();
     if (menu_open || ((msg->message == WM_KEYDOWN || msg->message == WM_SYSKEYDOWN) &&
                       msg->wParam == VK_ESCAPE))
         quick_cast_pause();

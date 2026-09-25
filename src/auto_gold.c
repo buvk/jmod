@@ -37,7 +37,7 @@ static void pick_up_nearby_gold(void)
     unsigned bucket, visited, slot;
     const BYTE *const *items;
 
-    if (!config->auto_gold_pickup || game_menu_open() ||
+    if (!config || !config->auto_gold_pickup || game_menu_open() ||
         !client || !common || !net)
         return;
     player = *(const BYTE *const *)(client + 0x127578);
@@ -122,8 +122,8 @@ void auto_gold_reset(void)
 
 void auto_gold_poll(HWND game_window, int hooked)
 {
-    if (config->auto_gold_pickup && !game_menu_open() &&
-        hooked && game_window &&
+    if (config && config->auto_gold_pickup && game_active() &&
+        !game_menu_open() && hooked && game_window &&
         GetForegroundWindow() == game_window &&
         InterlockedCompareExchange(&gold_message_pending, 1, 0) == 0 &&
         !PostMessageA(game_window, PICKUP_GOLD_MESSAGE, 0, 0))

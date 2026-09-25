@@ -8,11 +8,6 @@ static BYTE show_key_down[256];
 static CRITICAL_SECTION labels_lock;
 static volatile LONG item_labels_on;
 
-static int is_game_active(const BYTE *client)
-{
-    return client && *(const void *const *)(client + 0x127578) != NULL;
-}
-
 static int is_interactive_target(DWORD type)
 {
     return type == 1 || type == 2;
@@ -183,7 +178,7 @@ int item_labels_on_message(MSG *msg, HWND game_window)
         BYTE *client = (BYTE *)GetModuleHandleA("D2Client.dll");
         /* D2Client's world-target functions require an active game.
            Calling them from the front end can dereference stale target state. */
-        if (is_game_active(client) && !game_menu_open()) {
+        if (game_active() && !game_menu_open()) {
             if (*(DWORD *)(client + 0x116dd0) &&
                 is_interactive_target(*(DWORD *)(client + 0x116db8)))
                 refresh_object_target(client);
@@ -192,6 +187,22 @@ int item_labels_on_message(MSG *msg, HWND game_window)
     }
     if (key >= 256 || msg->hwnd != game_window || !is_show_items_key(key))
         return 0;
+
+    /* Track the binding outside a game without consuming it. If the key is
+       held while a game is created, its first repeat must not toggle labels. */
+    if (!game_active()) {
+        if (msg->message == WM_KEYDOWN || msg->message == WM_SYSKEYDOWN) {
+            EnterCriticalSection(&labels_lock);
+            show_key_down[key] = 1;
+            LeaveCriticalSection(&labels_lock);
+        } else if (msg->message == WM_KEYUP || msg->message == WM_SYSKEYUP) {
+            EnterCriticalSection(&labels_lock);
+            show_key_down[key] = 0;
+            LeaveCriticalSection(&labels_lock);
+        }
+        return 0;
+    }
+
     if (msg->message == WM_KEYDOWN || msg->message == WM_SYSKEYDOWN) {
         if (game_menu_open()) {
             /* Remember a press made in the menu so a repeat after closing
@@ -201,8 +212,7 @@ int item_labels_on_message(MSG *msg, HWND game_window)
             LeaveCriticalSection(&labels_lock);
             return 1;
         }
-        if (GetForegroundWindow() == game_window &&
-            is_game_active((const BYTE *)GetModuleHandleA("D2Client.dll"))) {
+        if (GetForegroundWindow() == game_window) {
             EnterCriticalSection(&labels_lock);
             if (!show_key_down[key]) {
                 show_key_down[key] = 1;

@@ -14,6 +14,7 @@ static HHOOK message_hook;
 static HWND game_window;
 static DWORD game_thread;
 static int was_focused;
+static int was_game_active;
 static D2ModConfig config;
 
 static LRESULT CALLBACK on_message(int code, WPARAM removed, LPARAM value)
@@ -72,8 +73,8 @@ static DWORD WINAPI start_hook(void *unused)
     }
     while (!GetModuleHandleA("D2Client.dll")) Sleep(100);
     read_options(module, &config);
-    if (config.rune_color)
-        rune_color_init();
+    if (config.rune_color && !rune_color_init())
+        config.rune_color = 0;
     quick_cast_init(config.quick_cast);
     auto_gold_init(&config);
     if (!loot_filter_init(&config, module))
@@ -85,6 +86,7 @@ static DWORD WINAPI start_hook(void *unused)
         HWND found;
         DWORD thread;
         int focused;
+        int active;
         EnumWindows(find_window, (LPARAM)&match);
         found = match.window;
         thread = match.thread;
@@ -95,23 +97,36 @@ static DWORD WINAPI start_hook(void *unused)
             UnhookWindowsHookEx(message_hook);
             message_hook = NULL;
             auto_gold_reset();
+            was_focused = 0;
+            was_game_active = 0;
         }
         game_window = found;
         game_thread = thread;
         if (!message_hook && found && thread)
             message_hook = SetWindowsHookExA(WH_GETMESSAGE, on_message, module, thread);
-        focused = (GetForegroundWindow() == game_window);
-        if (config.always_show_items && focused && !was_focused)
-            item_labels_resync_keys();
-        if (focused && !was_focused)
+
+        focused = game_window && GetForegroundWindow() == game_window;
+        active = game_active();
+
+        /* Resync on focus gain and on front-end -> game transitions. A key
+           held through either transition must be released before it can act. */
+        if (focused && (!was_focused || (active && !was_game_active))) {
+            if (config.always_show_items)
+                item_labels_resync_keys();
             quick_cast_resync_keys();
-        was_focused = focused;
+        }
+        if (!active && was_game_active)
+            auto_gold_reset();
+
         auto_gold_poll(found, message_hook != NULL);
-        if (!focused)
+        if (!focused || !active)
             quick_cast_release_all();
         else if (game_menu_open())
             quick_cast_pause();
-        Sleep(config.auto_gold_pickup ? config.gold_scan_interval_ms : 100);
+
+        was_focused = focused;
+        was_game_active = active;
+        Sleep(config.auto_gold_pickup && active ? config.gold_scan_interval_ms : 100);
     }
     return 0;
 }

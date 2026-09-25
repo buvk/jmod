@@ -50,7 +50,7 @@ static int show_ground_item(const BYTE *item)
     if (!record) return 1;
     code = *(const DWORD *)(record + 0x144);
     if ((code & 0x00ffffff) == 0x00646c67) { /* "gld" */
-        if (!filter_options->min_gold) return 1;
+        if (!filter_options || !filter_options->min_gold) return 1;
         return get_unit_stat(item, 14) >= filter_options->min_gold;
     }
     index = find_item(code);
@@ -61,7 +61,8 @@ static int show_ground_item(const BYTE *item)
 
 int loot_filter_show_item(const void *item)
 {
-    return !filter_options || show_ground_item((const BYTE *)item);
+    return !filter_options || !filter_options->loot_filter_enabled ||
+           show_ground_item((const BYTE *)item);
 }
 
 /* The draw-site filter only removes labels. The client obtains its hovered
@@ -132,8 +133,9 @@ int loot_filter_init(const D2ModConfig *options, HMODULE module)
     unsigned i;
     unsigned long mask;
 
+    if (!options) return 0;
     if (!options->loot_filter_enabled) return 1;
-    if (!client || !common) return 0;
+    if (!module || !client || !common) return 0;
     site = client + 0x63bf9;
     hover_site = client + 0x8729e;
     cursor_site = client + 0x155f4;
@@ -171,7 +173,6 @@ int loot_filter_init(const D2ModConfig *options, HMODULE module)
         item_masks[i] = end != option && !*end && mask <= 0x3f ?
             (BYTE)mask : 0x3f;
     }
-    filter_options = options;
     get_item_text = item_text.typed;
     get_unit_stat = unit_stat.typed;
     get_item_quality = quality.typed;
@@ -188,6 +189,11 @@ int loot_filter_init(const D2ModConfig *options, HMODULE module)
         VirtualProtect(site, 7, old_protection, &unused);
         return 0;
     }
+
+    /* Publish the filter only after every hook site has been validated and
+       made writable. A failed init must leave loot_filter_show_item inert. */
+    filter_options = options;
+
     site[0] = 0xe8;
     *(DWORD *)(site + 1) = (DWORD)((BYTE *)filter_label_candidate - (site + 5));
     site[5] = site[6] = 0x90;
