@@ -40,7 +40,7 @@ GoldRequestIntervalMs=50
 GoldRetryIntervalMs=500
 
 [LootFilter]
-; 0 = off, 1 = on. Only ground labels are hidden.
+; 0 = off, 1 = on. Hides ground labels and their hover highlights.
 Enabled=1
 ; Hide gold piles smaller than this amount. 0 shows all piles.
 MinGold=500
@@ -67,7 +67,7 @@ Meaning of the settings:
   this option, to avoid coloring the names twice.
 - `GoldPickupRange`: radius in map tiles, clamped to 1–6.
 - `GoldScanIntervalMs`, `GoldRequestIntervalMs`, `GoldRetryIntervalMs`: timing controls for gold scanning and pickup requests.
-- `[LootFilter] Enabled=1`: filter ground labels shown by the game's Show Items binding, including when `AlwaysShowItems` is on. It does not delete items or change automatic gold pickup.
+- `[LootFilter] Enabled=1`: filter ground labels shown by the game's Show Items binding, including when `AlwaysShowItems` is on, and suppress their hover highlights. It does not delete items or change automatic gold pickup.
 - `MinGold`: hides piles below the specified amount; a pile of exactly that amount remains visible.
 - `loot_filter.ini`: each named item type has a hex quality mask. `0x01` shows
   normal, inferior, and superior; `0x02` magic; `0x04` rare; `0x08` set;

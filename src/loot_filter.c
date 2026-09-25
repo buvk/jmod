@@ -64,6 +64,36 @@ int loot_filter_show_item(const void *item)
     return !filter_options || show_ground_item((const BYTE *)item);
 }
 
+/* The draw-site filter only removes labels. The client obtains its hovered
+   world unit separately; clear a hidden item there too so its highlight and
+   tooltip do not survive after the label has been filtered out. */
+static void *__cdecl filter_hovered_unit(void)
+{
+    BYTE *client = (BYTE *)GetModuleHandleA("D2Client.dll");
+    typedef void *(__cdecl *selected_unit_fn)(void);
+    typedef void (__fastcall *select_unit_fn)(void *);
+    void *selected = ((selected_unit_fn)(client + 0x14cf0))();
+
+    if (selected && *(const DWORD *)selected == 4 &&
+        !show_ground_item((const BYTE *)selected)) {
+        ((select_unit_fn)(client + 0x14db0))(NULL);
+        return NULL;
+    }
+    return selected;
+}
+
+/* The cursor update selects a world unit before the tooltip pass. Filter
+   that candidate before the game records it as the highlighted target. */
+static void __fastcall filter_cursor_target(void *target)
+{
+    BYTE *client = (BYTE *)GetModuleHandleA("D2Client.dll");
+    typedef void (__fastcall *select_unit_fn)(void *);
+    if (target && *(const DWORD *)target == 4 &&
+        !show_ground_item((const BYTE *)target))
+        target = NULL;
+    ((select_unit_fn)(client + 0x14db0))(target);
+}
+
 /* The original test at D2Client+0x63bf9 is followed by a JZ. Preserve all
    registers and leave ZF set when the item is hidden or lacks the original
    visible flag. popad and ret preserve the condition flags. */
@@ -88,8 +118,8 @@ int loot_filter_init(const D2ModConfig *options, HMODULE module)
 {
     BYTE *client = (BYTE *)GetModuleHandleA("D2Client.dll");
     HMODULE common = GetModuleHandleA("D2Common.dll");
-    BYTE *site;
-    DWORD old_protection, unused;
+    BYTE *site, *hover_site, *cursor_site;
+    DWORD old_protection, old_hover_protection, old_cursor_protection, unused;
     static const BYTE expected[] = {
         0xf6, 0x85, 0xec, 0x00, 0x00, 0x00, 0x80,
         0x0f, 0x84, 0x91, 0x03, 0x00, 0x00
@@ -105,7 +135,15 @@ int loot_filter_init(const D2ModConfig *options, HMODULE module)
     if (!options->loot_filter_enabled) return 1;
     if (!client || !common) return 0;
     site = client + 0x63bf9;
+    hover_site = client + 0x8729e;
+    cursor_site = client + 0x155f4;
     if (memcmp(site, expected, sizeof(expected)) != 0) return 0;
+    if (hover_site[0] != 0xe8 ||
+        *(DWORD *)(hover_site + 1) !=
+            (DWORD)(client + 0x14cf0 - (hover_site + 5))) return 0;
+    if (cursor_site[0] != 0xe8 ||
+        *(DWORD *)(cursor_site + 1) !=
+            (DWORD)(client + 0x14db0 - (cursor_site + 5))) return 0;
     item_text.raw = GetProcAddress(common, MAKEINTRESOURCEA(10600));
     unit_stat.raw = GetProcAddress(common, MAKEINTRESOURCEA(10519));
     quality.raw = GetProcAddress(common, MAKEINTRESOURCEA(10695));
@@ -139,10 +177,31 @@ int loot_filter_init(const D2ModConfig *options, HMODULE module)
     get_item_quality = quality.typed;
     if (!VirtualProtect(site, 7, PAGE_EXECUTE_READWRITE, &old_protection))
         return 0;
+    if (!VirtualProtect(hover_site, 5, PAGE_EXECUTE_READWRITE,
+                        &old_hover_protection)) {
+        VirtualProtect(site, 7, old_protection, &unused);
+        return 0;
+    }
+    if (!VirtualProtect(cursor_site, 5, PAGE_EXECUTE_READWRITE,
+                        &old_cursor_protection)) {
+        VirtualProtect(hover_site, 5, old_hover_protection, &unused);
+        VirtualProtect(site, 7, old_protection, &unused);
+        return 0;
+    }
     site[0] = 0xe8;
     *(DWORD *)(site + 1) = (DWORD)((BYTE *)filter_label_candidate - (site + 5));
     site[5] = site[6] = 0x90;
     FlushInstructionCache(GetCurrentProcess(), site, 7);
+    hover_site[0] = 0xe8;
+    *(DWORD *)(hover_site + 1) =
+        (DWORD)((BYTE *)filter_hovered_unit - (hover_site + 5));
+    FlushInstructionCache(GetCurrentProcess(), hover_site, 5);
+    cursor_site[0] = 0xe8;
+    *(DWORD *)(cursor_site + 1) =
+        (DWORD)((BYTE *)filter_cursor_target - (cursor_site + 5));
+    FlushInstructionCache(GetCurrentProcess(), cursor_site, 5);
+    VirtualProtect(cursor_site, 5, old_cursor_protection, &unused);
+    VirtualProtect(hover_site, 5, old_hover_protection, &unused);
     VirtualProtect(site, 7, old_protection, &unused);
     return 1;
 }
