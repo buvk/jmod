@@ -6,7 +6,7 @@ endif
 CPPFLAGS ?= -Isrc
 CFLAGS ?= -std=c11 -O2 -Wall -Wextra
 LIBS = -luser32
-SRC = src/jmod.c src/config.c src/d2_109b.c src/item_labels.c src/quick_cast.c src/auto_gold.c src/rune_color.c src/loot_filter.c src/inventory_qol.c
+SRC = src/jmod.c src/config.c src/d2_109b.c src/item_labels.c src/quick_cast.c src/auto_gold.c src/rune_color.c src/loot_filter.c src/ctrl_click_actions.c
 HDR = $(wildcard src/*.h)
 OUTDIR = build
 PYTHON ?= python

@@ -10,7 +10,7 @@ static void set_defaults(D2ModConfig *config)
     config->gold_pickup_in_town = 0;
     config->rune_color = 1;
     config->gold_pickup_range = D2ITEM_IMMEDIATE_PICKUP_MAX_DISTANCE;
-    config->inventory_quick_move = 0;
+    config->ctrl_click_actions = 0;
     config->loot_filter_enabled = 0;
     config->loot_filter_in_town = 0;
     config->min_gold = 0;
@@ -55,10 +55,10 @@ void read_options(HMODULE module, D2ModConfig *config)
        Larger values make the interaction path move the player toward it. */
     if (config->gold_pickup_range > D2ITEM_IMMEDIATE_PICKUP_MAX_DISTANCE)
         config->gold_pickup_range = D2ITEM_IMMEDIATE_PICKUP_MAX_DISTANCE;
-    config->inventory_quick_move = 0;
+    config->ctrl_click_actions = 0;
 
-    config->inventory_quick_move = GetPrivateProfileIntA(
-        "InventoryQoL", "QuickMove", 0, path) != 0;
+    config->ctrl_click_actions = GetPrivateProfileIntA(
+        "Mods", "CtrlClickActions", 0, path) != 0;
 
     config->loot_filter_enabled = GetPrivateProfileIntA("LootFilter", "Enabled", 0, path) != 0;
     config->loot_filter_in_town = GetPrivateProfileIntA("LootFilter", "FilterInTown", 0, path) != 0;

@@ -1,11 +1,11 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
-#include "inventory_qol.h"
+#include "ctrl_click_actions.h"
 #include "d2_109b.h"
 #include "game_ui.h"
 
-#define INVENTORY_QOL_MESSAGE (WM_APP + 0x314)
+#define CTRL_CLICK_ACTIONS_MESSAGE (WM_APP + 0x314)
 #define QUICK_MOVE_TIMEOUT_MS 1500u
 
 typedef int (__fastcall *inventory_click_fn)(
@@ -177,7 +177,7 @@ static void arm_belt_quick_drop(DWORD item_id)
 {
     void *player, *inventory;
 
-    if (!config || !config->inventory_quick_move || !state_lock_ready ||
+    if (!config || !config->ctrl_click_actions || !state_lock_ready ||
         !client_base || !quick_drop_modifier_down())
         return;
 
@@ -225,7 +225,7 @@ static void __fastcall belt_remove_packet_hook(DWORD packet_id, DWORD item_id)
         arm_belt_quick_drop(item_id);
 }
 
-void inventory_qol_reset(void)
+void ctrl_click_actions_reset(void)
 {
     if (!state_lock_ready)
         return;
@@ -236,7 +236,7 @@ void inventory_qol_reset(void)
     LeaveCriticalSection(&state_lock);
 }
 
-int inventory_qol_pending(void)
+int ctrl_click_actions_pending(void)
 {
     int active = 0;
 
@@ -348,7 +348,7 @@ static int try_quick_sell(void *player, void *inventory,
     void *item;
     int source_x, source_y, item_x, item_y, source_record;
 
-    if (!config || !config->inventory_quick_move ||
+    if (!config || !config->ctrl_click_actions ||
         !(mouse_flags & MK_CONTROL) || (mouse_flags & MK_SHIFT) ||
         source_page != D2INVPAGE_INVENTORY || !merchant_shop_open())
         return 0;
@@ -398,7 +398,7 @@ static int begin_quick_move(void *player, void *inventory,
     int drop_to_ground = 0;
     DWORD target_page = 0, ui_mode = 0;
 
-    if (!config || !config->inventory_quick_move ||
+    if (!config || !config->ctrl_click_actions ||
         !(mouse_flags & MK_CONTROL) || (mouse_flags & MK_SHIFT))
         return 0;
 
@@ -490,12 +490,12 @@ static int __fastcall inventory_click_hook(
 {
     int action;
 
-    if (inventory_qol_pending()) {
+    if (ctrl_click_actions_pending()) {
         /* Never overlap two remove-to-cursor requests. A normal click cancels
            the automatic second half and falls back to vanilla behavior. */
         if (mouse_flags & MK_CONTROL)
             return 1;
-        inventory_qol_reset();
+        ctrl_click_actions_reset();
     }
 
     if (try_quick_sell(player, inventory, mouse_x, mouse_y,
@@ -539,7 +539,7 @@ static int finish_pending(DWORD generation)
     LeaveCriticalSection(&state_lock);
 
     if (!game_active()) {
-        inventory_qol_reset();
+        ctrl_click_actions_reset();
         return 1;
     }
 
@@ -547,7 +547,7 @@ static int finish_pending(DWORD generation)
        already validated when it started; exact cursor-item identity below is
        the authoritative completion guard. */
     if (!move.drop_to_ground && current_ui_mode() != move.ui_mode) {
-        inventory_qol_reset();
+        ctrl_click_actions_reset();
         return 1;
     }
 
@@ -559,7 +559,7 @@ static int finish_pending(DWORD generation)
         *(const DWORD *)((const BYTE *)cursor_item + D2UNIT_ID_OFFSET) !=
             move.item_id) {
         /* Never place/drop whatever happens to be on the cursor later. */
-        inventory_qol_reset();
+        ctrl_click_actions_reset();
         return 1;
     }
 
@@ -582,7 +582,7 @@ static int finish_pending(DWORD generation)
                            &free_x, &free_y, (BYTE)move.target_page)) {
         /* Destination changed while the remove request was in flight. Leave
            the item safely on the cursor for normal manual placement. */
-        inventory_qol_reset();
+        ctrl_click_actions_reset();
         return 1;
     }
 
@@ -595,17 +595,17 @@ static int finish_pending(DWORD generation)
     return 1;
 }
 
-int inventory_qol_on_message(MSG *msg, HWND game_window)
+int ctrl_click_actions_on_message(MSG *msg, HWND game_window)
 {
     if (!state_lock_ready || !msg ||
-        msg->message != INVENTORY_QOL_MESSAGE ||
+        msg->message != CTRL_CLICK_ACTIONS_MESSAGE ||
         msg->hwnd != game_window)
         return 0;
 
     return finish_pending((DWORD)msg->wParam);
 }
 
-void inventory_qol_poll(HWND game_window, int hooked)
+void ctrl_click_actions_poll(HWND game_window, int hooked)
 {
     DWORD generation = 0;
     int post = 0;
@@ -626,7 +626,7 @@ void inventory_qol_poll(HWND game_window, int hooked)
     LeaveCriticalSection(&state_lock);
 
     if (post &&
-        !PostMessageA(game_window, INVENTORY_QOL_MESSAGE,
+        !PostMessageA(game_window, CTRL_CLICK_ACTIONS_MESSAGE,
                       (WPARAM)generation, 0)) {
         EnterCriticalSection(&state_lock);
         if (pending.generation == generation)
@@ -764,7 +764,7 @@ static int resolve_functions(void)
     return 1;
 }
 
-int inventory_qol_init(const D2ModConfig *options)
+int ctrl_click_actions_init(const D2ModConfig *options)
 {
     BYTE *inventory_site, *stash_site, *cube_site, *trade_site, *belt_remove_site, *original;
     BYTE *draw_sites[6];
@@ -774,7 +774,7 @@ int inventory_qol_init(const D2ModConfig *options)
 
     if (!options)
         return 0;
-    if (!options->inventory_quick_move)
+    if (!options->ctrl_click_actions)
         return 1;
 
     client_base = (BYTE *)GetModuleHandleA("D2Client.dll");
