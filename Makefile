@@ -7,8 +7,9 @@ LIBS = -luser32
 SRC = src/jmod.c src/config.c src/item_labels.c src/quick_cast.c src/auto_gold.c src/rune_color.c src/loot_filter.c
 HDR = $(wildcard src/*.h)
 OUTDIR = build
+PYTHON ?= python
 
-.PHONY: all clean
+.PHONY: all clean validate
 all: $(OUTDIR)/D2Win.dll $(OUTDIR)/jmod.dll
 
 $(OUTDIR):
@@ -19,6 +20,9 @@ $(OUTDIR)/D2Win.dll: $(SRC) $(HDR) D2Win.def | $(OUTDIR)
 
 $(OUTDIR)/jmod.dll: $(SRC) $(HDR) | $(OUTDIR)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -shared -o $@ $(SRC) $(LIBS)
+
+validate:
+	$(PYTHON) tools/validate_items.py
 
 clean:
 	rm -rf $(OUTDIR)
