@@ -16,6 +16,7 @@
 #define D2CLIENT_ITEM_LABEL_RENDER_FLAG_OFFSET     0x125a68u
 #define D2CLIENT_UNIT_HASH_TABLES_OFFSET           0x125d78u
 #define D2CLIENT_UI_MODE_OFFSET                    0x120d54u
+#define D2CLIENT_UI_MODE_TRADE                     11u
 #define D2CLIENT_UI_MODE_STASH                     12u
 #define D2CLIENT_UI_MODE_CUBE                      14u
 #define D2CLIENT_CURSOR_ITEM_PTR_OFFSET             0x12c2a8u
@@ -55,6 +56,7 @@
 #define D2CLIENT_HOOK_LABEL_DRAW_CALL_OFFSET       0x877e5u
 #define D2CLIENT_HOOK_INVENTORY_CLICK_OFFSET       0x405ecu
 #define D2CLIENT_HOOK_STASH_CLICK_OFFSET           0x40a2fu
+#define D2CLIENT_HOOK_TRADE_CLICK_OFFSET           0x40a99u
 #define D2CLIENT_HOOK_CUBE_CLICK_OFFSET            0x40976u
 #define D2CLIENT_HOOK_DRAW_CURSOR_1_OFFSET          0x090d3u
 #define D2CLIENT_HOOK_DRAW_CURSOR_2_OFFSET          0x0aa65u
@@ -94,6 +96,7 @@
 #define D2CLIENT_INVENTORY_GRID_CELL_WIDTH_OFFSET  0x14u
 #define D2CLIENT_INVENTORY_GRID_CELL_HEIGHT_OFFSET 0x15u
 #define D2INVPAGE_INVENTORY                        0u
+#define D2INVPAGE_TRADE                            2u
 #define D2INVPAGE_CUBE                             3u
 #define D2INVPAGE_STASH                            4u
 

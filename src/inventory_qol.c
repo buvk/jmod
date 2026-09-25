@@ -114,7 +114,14 @@ static int quick_move_target(DWORD source_page, DWORD *target_page,
         return 0;
 
     mode = current_ui_mode();
-    if (mode == D2CLIENT_UI_MODE_STASH) {
+    if (mode == D2CLIENT_UI_MODE_TRADE) {
+        if (source_page == D2INVPAGE_INVENTORY)
+            *target_page = D2INVPAGE_TRADE;
+        else if (source_page == D2INVPAGE_TRADE)
+            *target_page = D2INVPAGE_INVENTORY;
+        else
+            return 0;
+    } else if (mode == D2CLIENT_UI_MODE_STASH) {
         if (source_page == D2INVPAGE_INVENTORY)
             *target_page = D2INVPAGE_STASH;
         else if (source_page == D2INVPAGE_STASH)
@@ -699,7 +706,7 @@ static int resolve_functions(void)
 
 int inventory_qol_init(const D2ModConfig *options)
 {
-    BYTE *inventory_site, *stash_site, *cube_site, *original;
+    BYTE *inventory_site, *stash_site, *cube_site, *trade_site, *original;
     BYTE *draw_sites[6];
     DWORD old_inventory, old_stash, unused;
     DWORD i;
@@ -718,6 +725,7 @@ int inventory_qol_init(const D2ModConfig *options)
     inventory_site = client_base + D2CLIENT_HOOK_INVENTORY_CLICK_OFFSET;
     stash_site = client_base + D2CLIENT_HOOK_STASH_CLICK_OFFSET;
     cube_site = client_base + D2CLIENT_HOOK_CUBE_CLICK_OFFSET;
+    trade_site = client_base + D2CLIENT_HOOK_TRADE_CLICK_OFFSET;
     draw_sites[0] = client_base + D2CLIENT_HOOK_DRAW_CURSOR_1_OFFSET;
     draw_sites[1] = client_base + D2CLIENT_HOOK_DRAW_CURSOR_2_OFFSET;
     draw_sites[2] = client_base + D2CLIENT_HOOK_DRAW_CURSOR_3_OFFSET;
@@ -726,7 +734,8 @@ int inventory_qol_init(const D2ModConfig *options)
     draw_sites[5] = client_base + D2CLIENT_HOOK_DRAW_CURSOR_6_OFFSET;
     if (!call_target_matches(inventory_site, original) ||
         !call_target_matches(stash_site, original) ||
-        !call_target_matches(cube_site, original))
+        !call_target_matches(cube_site, original) ||
+        !call_target_matches(trade_site, original))
         return 0;
     for (i = 0; i < 6; ++i) {
         if (!call_target_matches(
@@ -770,7 +779,8 @@ int inventory_qol_init(const D2ModConfig *options)
     VirtualProtect(stash_site, 5, old_stash, &unused);
     VirtualProtect(inventory_site, 5, old_inventory, &unused);
 
-    if (!patch_call(cube_site, inventory_click_hook))
+    if (!patch_call(cube_site, inventory_click_hook) ||
+        !patch_call(trade_site, inventory_click_hook))
         return 0;
 
     for (i = 0; i < 6; ++i) {
