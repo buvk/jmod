@@ -8,6 +8,7 @@
 #include "game_ui.h"
 #include "rune_color.h"
 #include "loot_filter.h"
+#include "d2_109b.h"
 
 static HMODULE module;
 static HHOOK message_hook;
@@ -85,6 +86,12 @@ static DWORD WINAPI start_hook(void *unused)
         return 0;
     }
     while (!GetModuleHandleA("D2Client.dll")) Sleep(100);
+    /* All gameplay helpers use 1.09b-specific D2Client offsets. Fail
+       closed before installing hooks or reading any of those globals. */
+    if (!d2_109b_client_matches()) {
+        CloseHandle(singleton_mutex);
+        return 0;
+    }
     read_options(module, &config);
     if (config.rune_color && !rune_color_init())
         config.rune_color = 0;

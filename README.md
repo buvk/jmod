@@ -117,6 +117,11 @@ entries appear simply as `Healing Potion` and `Mana Potion`. Codes absent from
 the list remain visible if they appear in a game.
 
 Restart the game after changing either INI. The patch is tied to the supplied 1.09b binaries and their pointer layout.
+At startup, jmod verifies several untouched instruction and call sites in
+`D2Client.dll` before using any raw client offsets. If that compatibility
+check fails, jmod installs no gameplay hooks. A different game version, or
+another mod that already changed one of those exact sites, is therefore
+rejected safely instead of being treated as the supported 1.09b client.
 
 ## Installation
 
@@ -142,10 +147,11 @@ This project is built with the 32-bit MinGW-w64 toolchain, not a 64-bit or MSYS 
 In MSYS2, install the expected toolchain:
 
 ```sh
-pacman -S --needed mingw-w64-i686-gcc make
+pacman -S --needed mingw-w64-i686-gcc make python
 ```
 
-Validate the item-name table and loot-filter entries from the repository root:
+The validator requires Python 3.10 or newer. Validate the item-name table and
+loot-filter entries from the repository root:
 
 ```sh
 make validate
@@ -173,7 +179,7 @@ The output is placed under `build/` and the repository is configured to ignore g
 ├── src/
 │   ├── auto_gold.c/.h     # automatic gold pickup
 │   ├── config.c/.h        # INI parsing and options
-│   ├── d2_109b.h          # centralized Diablo II 1.09b offsets and ordinals
+│   ├── d2_109b.c/.h       # 1.09b compatibility check, offsets, and ordinals
 │   ├── game_ui.h          # active-game and Escape-menu state
 │   ├── item_labels.c/.h   # item label toggle and drawing
 │   ├── item_names.h       # item type names used by the loot filter
@@ -185,6 +191,8 @@ The output is placed under `build/` and the repository is configured to ignore g
 ├── loot_filter.ini        # per-item quality masks
 ├── tools/
 │   └── validate_items.py  # verifies item table/filter synchronization
+├── .github/workflows/
+│   └── ci.yml             # validates data and cross-builds both DLLs
 ├── D2Win.def              # export definition file for the proxy build
 ├── Makefile               # build rules
 ├── .gitattributes         # consistent text line endings

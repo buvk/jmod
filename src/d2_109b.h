@@ -118,4 +118,7 @@
 #define D2LANG_RUNE_SHAEL_ID                       0x51a8u
 #define D2LANG_RUNE_JAH_ID                         0x51aau
 
+/* Verify the untouched D2Client sites jmod depends on before using raw offsets. */
+int d2_109b_client_matches(void);
+
 #endif
