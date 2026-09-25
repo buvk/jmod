@@ -41,7 +41,8 @@ static inline int game_town_state(void)
 
     player = game_player();
     common = GetModuleHandleA("D2Common.dll");
-    if (!player || !common)
+    if (!player || *(const DWORD *)player != 0 ||
+        !*(const void *const *)(player + 0x38) || !common)
         return GAME_TOWN_UNKNOWN;
 
     if (!exports_checked) {

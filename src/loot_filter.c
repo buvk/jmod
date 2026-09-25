@@ -45,8 +45,10 @@ static int show_ground_item(const BYTE *item)
 
     if (!filter_options || !filter_options->loot_filter_enabled)
         return 1;
+    /* When town filtering is disabled, fail open during transitions too:
+       an unknown town state should never hide an item unexpectedly. */
     if (!filter_options->loot_filter_in_town &&
-        game_town_state() == GAME_TOWN_YES)
+        game_town_state() != GAME_TOWN_NO)
         return 1;
 
     /* If an item cannot be classified, leave its label visible. */

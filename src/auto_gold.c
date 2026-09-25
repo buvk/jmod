@@ -5,39 +5,101 @@
 
 #define PICKUP_GOLD_MESSAGE (WM_APP + 0x313)
 #define GOLD_INTERACT_COLLISION_MASK 0x804
+#define RECENT_GOLD_COUNT 32
+
+typedef int (__stdcall *unit_distance_fn)(const void *, const void *);
+typedef int (__stdcall *unit_collision_fn)(const void *, const void *, int);
+typedef const BYTE *(__stdcall *item_text_fn)(DWORD);
+typedef void (__stdcall *send_packet_fn)(DWORD, const BYTE *, DWORD);
+
+typedef struct RecentGold {
+    DWORD id;
+    DWORD at;
+    int used;
+} RecentGold;
+
 static const D2ModConfig *config;
 static DWORD last_gold_at;
-static struct { DWORD id, at; } recent_gold[32];
+static RecentGold recent_gold[RECENT_GOLD_COUNT];
+static unsigned recent_gold_next;
 static volatile LONG gold_message_pending;
 static CRITICAL_SECTION gold_lock;
+static unit_distance_fn unit_distance;
+static unit_collision_fn unit_collision;
+static item_text_fn item_text;
+static send_packet_fn send_packet;
+
+static int resolve_gold_exports(void)
+{
+    HMODULE common, net;
+    union { FARPROC raw; unit_distance_fn typed; } distance_export;
+    union { FARPROC raw; unit_collision_fn typed; } collision_export;
+    union { FARPROC raw; item_text_fn typed; } text_export;
+    union { FARPROC raw; send_packet_fn typed; } packet_export;
+
+    if (unit_distance && unit_collision && item_text && send_packet)
+        return 1;
+
+    common = GetModuleHandleA("D2Common.dll");
+    net = GetModuleHandleA("D2Net.dll");
+    if (!common || !net)
+        return 0;
+
+    distance_export.raw = GetProcAddress(common, MAKEINTRESOURCEA(10399));
+    collision_export.raw = GetProcAddress(common, MAKEINTRESOURCEA(10363));
+    text_export.raw = GetProcAddress(common, MAKEINTRESOURCEA(10600));
+    packet_export.raw = GetProcAddress(net, MAKEINTRESOURCEA(10005));
+    if (!distance_export.raw || !collision_export.raw ||
+        !text_export.raw || !packet_export.raw)
+        return 0;
+
+    unit_distance = distance_export.typed;
+    unit_collision = collision_export.typed;
+    item_text = text_export.typed;
+    send_packet = packet_export.typed;
+    return 1;
+}
+
+static int gold_recently_requested(DWORD id, DWORD now)
+{
+    unsigned i;
+    for (i = 0; i < RECENT_GOLD_COUNT; ++i) {
+        if (recent_gold[i].used && recent_gold[i].id == id)
+            return (DWORD)(now - recent_gold[i].at) <
+                   AUTO_GOLD_RETRY_INTERVAL_MS;
+    }
+    return 0;
+}
+
+static void remember_gold_request(DWORD id, DWORD now)
+{
+    unsigned i;
+    for (i = 0; i < RECENT_GOLD_COUNT; ++i) {
+        if (recent_gold[i].used && recent_gold[i].id == id) {
+            recent_gold[i].at = now;
+            return;
+        }
+    }
+
+    recent_gold[recent_gold_next].id = id;
+    recent_gold[recent_gold_next].at = now;
+    recent_gold[recent_gold_next].used = 1;
+    recent_gold_next = (recent_gold_next + 1) % RECENT_GOLD_COUNT;
+}
 
 static void pick_up_nearby_gold_locked(void)
 {
     BYTE *client = (BYTE *)GetModuleHandleA("D2Client.dll");
-    HMODULE common = GetModuleHandleA("D2Common.dll");
-    HMODULE net = GetModuleHandleA("D2Net.dll");
-    typedef int (__stdcall *unit_distance_fn)(const void *, const void *);
-    typedef int (__stdcall *unit_collision_fn)(const void *, const void *, int);
-    typedef const BYTE *(__stdcall *item_text_fn)(DWORD);
-    typedef void (__stdcall *send_packet_fn)(DWORD, const BYTE *, DWORD);
-    unit_distance_fn unit_distance;
-    unit_collision_fn unit_collision;
-    item_text_fn item_text;
-    send_packet_fn send_packet;
-    union { FARPROC raw; unit_distance_fn typed; } unit_distance_export;
-    union { FARPROC raw; unit_collision_fn typed; } unit_collision_export;
-    union { FARPROC raw; item_text_fn typed; } item_text_export;
-    union { FARPROC raw; send_packet_fn typed; } send_packet_export;
     const BYTE *player;
     const BYTE *item;
     const BYTE *record;
     BYTE packet[13];
     DWORD id, now;
-    unsigned bucket, visited, slot;
+    unsigned bucket, visited;
     const BYTE *const *items;
 
     if (!config || !config->auto_gold_pickup || game_menu_open() ||
-        !client || !common || !net)
+        !client || !resolve_gold_exports())
         return;
     player = *(const BYTE *const *)(client + 0x127578);
     if (!player || *(const DWORD *)player != 0 ||
@@ -49,22 +111,9 @@ static void pick_up_nearby_gold_locked(void)
     if (!config->gold_pickup_in_town && game_town_state() != GAME_TOWN_NO)
         return;
 
-    /* D2Game 1.09b uses D2Common ordinal 10399 for its item interaction
-       range check. Use the same calculation instead of approximating it
-       with Euclidean tile distance. */
-    unit_distance_export.raw = GetProcAddress(common, MAKEINTRESOURCEA(10399));
-    /* D2Game 1.09b uses ordinal 10363 with mask 0x804 immediately after
-       its <= 4 distance check. A nonzero result makes it walk toward the
-       item instead of picking it up immediately. */
-    unit_collision_export.raw = GetProcAddress(common, MAKEINTRESOURCEA(10363));
-    item_text_export.raw = GetProcAddress(common, MAKEINTRESOURCEA(10600));
-    send_packet_export.raw = GetProcAddress(net, MAKEINTRESOURCEA(10005));
-    unit_distance = unit_distance_export.typed;
-    unit_collision = unit_collision_export.typed;
-    item_text = item_text_export.typed;
-    send_packet = send_packet_export.typed;
-    if (!unit_distance || !unit_collision || !item_text || !send_packet)
-        return;
+    /* D2Game 1.09b uses D2Common #10399 for item distance and #10363
+       with mask 0x804 for the collision check. resolve_gold_exports()
+       caches those functions and the item-text/network exports once. */
 
     now = GetTickCount();
     if ((DWORD)(now - last_gold_at) < AUTO_GOLD_REQUEST_INTERVAL_MS)
@@ -78,9 +127,7 @@ static void pick_up_nearby_gold_locked(void)
                 !*(const void *const *)(item + 0x38))
                 continue;
             id = *(const DWORD *)(item + 0x08);
-            slot = id % 32;
-            if (recent_gold[slot].id == id &&
-                (DWORD)(now - recent_gold[slot].at) < AUTO_GOLD_RETRY_INTERVAL_MS)
+            if (gold_recently_requested(id, now))
                 continue;
             record = item_text(*(const DWORD *)(item + 0x04));
             if (!record || *(const DWORD *)(record + 0x144) != 0x20646c67)
@@ -94,8 +141,7 @@ static void pick_up_nearby_gold_locked(void)
             *(DWORD *)(packet + 9) = 0;
             send_packet(0, packet, sizeof(packet));
             last_gold_at = now;
-            recent_gold[slot].id = id;
-            recent_gold[slot].at = now;
+            remember_gold_request(id, now);
             return;
         }
         if (visited >= 4096) break;
@@ -121,6 +167,7 @@ void auto_gold_reset(void)
     EnterCriticalSection(&gold_lock);
     last_gold_at = 0;
     ZeroMemory(recent_gold, sizeof(recent_gold));
+    recent_gold_next = 0;
     LeaveCriticalSection(&gold_lock);
 }
 
