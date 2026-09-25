@@ -386,8 +386,11 @@ static int begin_quick_move(void *player, void *inventory,
            full. D2Common uses the same grid rules the game uses for placement. */
         free_x = free_y = 0;
         if (!get_free_position(inventory, item, target_record,
-                               &free_x, &free_y, (BYTE)target_page))
+                               &free_x, &free_y, (BYTE)target_page)) {
+            if (play_sound)
+                (void)play_sound(D2SOUND_CURSOR_ERROR, 0, 0, 0, 0);
             return 1;
+        }
     }
 
     EnterCriticalSection(&state_lock);

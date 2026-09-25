@@ -154,6 +154,7 @@
 #define D2NET_PACKET_NPC_SELL_PRICE_OFFSET         13u
 #define D2TRANSACTION_SELL                         1
 #define D2SOUND_ITEM_GOLD                          0xddu
+#define D2SOUND_CURSOR_ERROR                       3u
 
 /* Client-to-server item pickup packet. */
 #define D2NET_PACKET_PICKUP_ITEM                   0x16u
