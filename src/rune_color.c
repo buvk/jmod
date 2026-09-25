@@ -1,6 +1,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include "rune_color.h"
+#include "d2_109b.h"
 
 /* English 1.09b string IDs from expansionstring.tbl, r33 through r01. */
 static const char *const expansion_names[33] = {
@@ -13,8 +14,9 @@ static const char *const expansion_names[33] = {
     "Tir Rune", "Eld Rune", "El Rune"
 };
 static const struct { unsigned rune, id; const char *name; } patch_names[3] = {
-    { 16, 0x51a6, "Io Rune" }, { 13, 0x51a8, "Shael Rune" },
-    { 31, 0x51aa, "Jah Rune" }
+    { 16, D2LANG_RUNE_IO_ID, "Io Rune" },
+    { 13, D2LANG_RUNE_SHAEL_ID, "Shael Rune" },
+    { 31, D2LANG_RUNE_JAH_ID, "Jah Rune" }
 };
 
 typedef const WORD *(__fastcall *lookup_fn)(unsigned);
@@ -49,8 +51,9 @@ static const WORD *__fastcall colored_lookup(unsigned id)
 {
     unsigned i;
     const WORD *original = original_lookup(id);
-    if (id >= 0x28c8 && id <= 0x28e8) {
-        i = id - 0x28c8;
+    if (id >= D2LANG_RUNE_EXPANSION_FIRST_ID &&
+        id <= D2LANG_RUNE_EXPANSION_LAST_ID) {
+        i = id - D2LANG_RUNE_EXPANSION_FIRST_ID;
         if (matches(original, expansion_names[i])) return expansion_color[i];
     }
     for (i = 0; i < 3; ++i)
@@ -124,13 +127,19 @@ int rune_color_init(void)
     SIZE_T client_size, common_size;
     unsigned i;
     if (!lang || !client || !common) return 0;
-    export_fn = GetProcAddress(lang, MAKEINTRESOURCEA(10004));
-    key_export_fn = GetProcAddress(lang, MAKEINTRESOURCEA(10003));
+    export_fn = GetProcAddress(
+        lang, MAKEINTRESOURCEA(D2LANG_LOOKUP_BY_ID_ORDINAL));
+    key_export_fn = GetProcAddress(
+        lang, MAKEINTRESOURCEA(D2LANG_LOOKUP_BY_KEY_ORDINAL));
     if (!export_fn || !key_export_fn) return 0;
-    client_import = find_lookup_import(client, export_fn, 10004);
-    common_import = find_lookup_import(common, export_fn, 10004);
-    client_key = find_lookup_import(client, key_export_fn, 10003);
-    common_key = find_lookup_import(common, key_export_fn, 10003);
+    client_import = find_lookup_import(
+        client, export_fn, D2LANG_LOOKUP_BY_ID_ORDINAL);
+    common_import = find_lookup_import(
+        common, export_fn, D2LANG_LOOKUP_BY_ID_ORDINAL);
+    client_key = find_lookup_import(
+        client, key_export_fn, D2LANG_LOOKUP_BY_KEY_ORDINAL);
+    common_key = find_lookup_import(
+        common, key_export_fn, D2LANG_LOOKUP_BY_KEY_ORDINAL);
     if (!client_import || !common_import || !client_key || !common_key) return 0;
     lookup.raw = export_fn;
     original_lookup = lookup.typed;

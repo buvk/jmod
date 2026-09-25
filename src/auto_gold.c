@@ -2,9 +2,9 @@
 #include <windows.h>
 #include "auto_gold.h"
 #include "game_ui.h"
+#include "d2_109b.h"
 
 #define PICKUP_GOLD_MESSAGE (WM_APP + 0x313)
-#define GOLD_INTERACT_COLLISION_MASK 0x804
 #define RECENT_GOLD_COUNT 32
 
 typedef int (__stdcall *unit_distance_fn)(const void *, const void *);
@@ -45,10 +45,14 @@ static int resolve_gold_exports(void)
     if (!common || !net)
         return 0;
 
-    distance_export.raw = GetProcAddress(common, MAKEINTRESOURCEA(10399));
-    collision_export.raw = GetProcAddress(common, MAKEINTRESOURCEA(10363));
-    text_export.raw = GetProcAddress(common, MAKEINTRESOURCEA(10600));
-    packet_export.raw = GetProcAddress(net, MAKEINTRESOURCEA(10005));
+    distance_export.raw = GetProcAddress(
+        common, MAKEINTRESOURCEA(D2COMMON_UNIT_DISTANCE_ORDINAL));
+    collision_export.raw = GetProcAddress(
+        common, MAKEINTRESOURCEA(D2COMMON_TEST_INTERACTION_COLLISION_ORDINAL));
+    text_export.raw = GetProcAddress(
+        common, MAKEINTRESOURCEA(D2COMMON_GET_ITEM_TEXT_ORDINAL));
+    packet_export.raw = GetProcAddress(
+        net, MAKEINTRESOURCEA(D2NET_SEND_PACKET_ORDINAL));
     if (!distance_export.raw || !collision_export.raw ||
         !text_export.raw || !packet_export.raw)
         return 0;
@@ -93,7 +97,7 @@ static void pick_up_nearby_gold_locked(void)
     const BYTE *player;
     const BYTE *item;
     const BYTE *record;
-    BYTE packet[13];
+    BYTE packet[D2NET_PACKET_PICKUP_ITEM_SIZE];
     DWORD id, now;
     unsigned bucket, visited;
     const BYTE *const *items;
@@ -101,9 +105,10 @@ static void pick_up_nearby_gold_locked(void)
     if (!config || !config->auto_gold_pickup || game_menu_open() ||
         !client || !resolve_gold_exports())
         return;
-    player = *(const BYTE *const *)(client + 0x127578);
-    if (!player || *(const DWORD *)player != 0 ||
-        !*(const void *const *)(player + 0x38))
+    player = *(const BYTE *const *)(client + D2CLIENT_PLAYER_PTR_OFFSET);
+    if (!player ||
+        *(const DWORD *)(player + D2UNIT_TYPE_OFFSET) != D2UNIT_PLAYER ||
+        !*(const void *const *)(player + D2UNIT_PATH_OFFSET))
         return;
 
     /* Preserve the old fail-closed behavior: when town detection is
@@ -111,34 +116,39 @@ static void pick_up_nearby_gold_locked(void)
     if (!config->gold_pickup_in_town && game_town_state() != GAME_TOWN_NO)
         return;
 
-    /* D2Game 1.09b uses D2Common #10399 for item distance and #10363
-       with mask 0x804 for the collision check. resolve_gold_exports()
-       caches those functions and the item-text/network exports once. */
+    /* Use the same 1.09b distance and interaction-collision helpers as D2Game.
+       resolve_gold_exports() caches those functions and the item-text/network
+       exports once. */
 
     now = GetTickCount();
     if ((DWORD)(now - last_gold_at) < AUTO_GOLD_REQUEST_INTERVAL_MS)
         return;
 
-    items = (const BYTE *const *)(client + 0x125d78 + 4 * 128 * sizeof(void *));
-    for (bucket = 0, visited = 0; bucket < 128; ++bucket) {
+    items = (const BYTE *const *)(client + D2CLIENT_UNIT_HASH_TABLES_OFFSET +
+        D2UNIT_ITEM * D2CLIENT_UNIT_HASH_BUCKET_COUNT * sizeof(void *));
+    for (bucket = 0, visited = 0;
+         bucket < D2CLIENT_UNIT_HASH_BUCKET_COUNT; ++bucket) {
         for (item = items[bucket]; item && visited++ < 4096;
-             item = *(const BYTE *const *)(item + 0x108)) {
-            if (*(const DWORD *)item != 4 || *(const DWORD *)(item + 0x0c) != 3 ||
-                !*(const void *const *)(item + 0x38))
+             item = *(const BYTE *const *)(item + D2UNIT_HASH_NEXT_OFFSET)) {
+            if (*(const DWORD *)(item + D2UNIT_TYPE_OFFSET) != D2UNIT_ITEM ||
+                *(const DWORD *)(item + D2UNIT_MODE_OFFSET) != D2ITEM_MODE_GROUND ||
+                !*(const void *const *)(item + D2UNIT_PATH_OFFSET))
                 continue;
-            id = *(const DWORD *)(item + 0x08);
+            id = *(const DWORD *)(item + D2UNIT_ID_OFFSET);
             if (gold_recently_requested(id, now))
                 continue;
-            record = item_text(*(const DWORD *)(item + 0x04));
-            if (!record || *(const DWORD *)(record + 0x144) != 0x20646c67)
+            record = item_text(*(const DWORD *)(item + D2UNIT_CLASS_ID_OFFSET));
+            if (!record ||
+                *(const DWORD *)(record + D2ITEMTXT_CODE_OFFSET) != D2ITEM_CODE_GOLD)
                 continue;
             if (unit_distance(player, item) > config->gold_pickup_range ||
-                unit_collision(player, item, GOLD_INTERACT_COLLISION_MASK))
+                unit_collision(player, item, D2ITEM_INTERACT_COLLISION_MASK))
                 continue;
-            packet[0] = 0x16;
-            *(DWORD *)(packet + 1) = 4;
-            *(DWORD *)(packet + 5) = id;
-            *(DWORD *)(packet + 9) = 0;
+            packet[0] = D2NET_PACKET_PICKUP_ITEM;
+            *(DWORD *)(packet + D2NET_PACKET_PICKUP_UNIT_TYPE_OFFSET) =
+                D2UNIT_ITEM;
+            *(DWORD *)(packet + D2NET_PACKET_PICKUP_UNIT_ID_OFFSET) = id;
+            *(DWORD *)(packet + D2NET_PACKET_PICKUP_RESERVED_OFFSET) = 0;
             send_packet(0, packet, sizeof(packet));
             last_gold_at = now;
             remember_gold_request(id, now);

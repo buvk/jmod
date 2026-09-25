@@ -5,6 +5,7 @@
 #include "loot_filter.h"
 #include "item_names.h"
 #include "game_ui.h"
+#include "d2_109b.h"
 
 static const D2ModConfig *filter_options;
 static const BYTE *(__stdcall *get_item_text)(DWORD);
@@ -52,15 +53,15 @@ static int show_ground_item(const BYTE *item)
         return 1;
 
     /* If an item cannot be classified, leave its label visible. */
-    if (!item || *(const DWORD *)item != 4 ||
+    if (!item || *(const DWORD *)(item + D2UNIT_TYPE_OFFSET) != D2UNIT_ITEM ||
         !get_item_text || !get_unit_stat)
         return 1;
-    record = get_item_text(*(const DWORD *)(item + 4));
+    record = get_item_text(*(const DWORD *)(item + D2UNIT_CLASS_ID_OFFSET));
     if (!record) return 1;
-    code = *(const DWORD *)(record + 0x144);
-    if ((code & 0x00ffffff) == 0x00646c67) { /* "gld" */
+    code = *(const DWORD *)(record + D2ITEMTXT_CODE_OFFSET);
+    if ((code & D2ITEM_CODE_3CHAR_MASK) == D2ITEM_CODE_GOLD_3CHAR) { /* "gld" */
         if (!filter_options || !filter_options->min_gold) return 1;
-        return get_unit_stat(item, 14) >= filter_options->min_gold;
+        return get_unit_stat(item, D2STAT_GOLD) >= filter_options->min_gold;
     }
     index = find_item(code);
     if (index < 0 || item_names[index].quest || !get_item_quality) return 1;
@@ -81,11 +82,13 @@ static void *__cdecl filter_hovered_unit(void)
     BYTE *client = (BYTE *)GetModuleHandleA("D2Client.dll");
     typedef void *(__cdecl *selected_unit_fn)(void);
     typedef void (__fastcall *select_unit_fn)(void *);
-    void *selected = ((selected_unit_fn)(client + 0x14cf0))();
+    void *selected = ((selected_unit_fn)(client +
+        D2CLIENT_FN_GET_SELECTED_UNIT_OFFSET))();
 
-    if (selected && *(const DWORD *)selected == 4 &&
+    if (selected && *(const DWORD *)selected == D2UNIT_ITEM &&
         !show_ground_item((const BYTE *)selected)) {
-        ((select_unit_fn)(client + 0x14db0))(NULL);
+        ((select_unit_fn)(client + D2CLIENT_FN_SET_CURSOR_TARGET_OFFSET))(
+            NULL);
         return NULL;
     }
     return selected;
@@ -97,15 +100,15 @@ static void __fastcall filter_cursor_target(void *target)
 {
     BYTE *client = (BYTE *)GetModuleHandleA("D2Client.dll");
     typedef void (__fastcall *select_unit_fn)(void *);
-    if (target && *(const DWORD *)target == 4 &&
+    if (target && *(const DWORD *)target == D2UNIT_ITEM &&
         !show_ground_item((const BYTE *)target))
         target = NULL;
-    ((select_unit_fn)(client + 0x14db0))(target);
+    ((select_unit_fn)(client + D2CLIENT_FN_SET_CURSOR_TARGET_OFFSET))(target);
 }
 
-/* The original test at D2Client+0x63bf9 is followed by a JZ. Preserve all
-   registers and leave ZF set when the item is hidden or lacks the original
-   visible flag. popad and ret preserve the condition flags. */
+/* The original loot-label test is followed by a JZ. Preserve all registers
+   and leave ZF set when the item is hidden or lacks the original visible
+   flag. popad and ret preserve the condition flags. */
 static void __attribute__((naked)) filter_label_candidate(void)
 {
     __asm__ __volatile__(
@@ -144,19 +147,24 @@ int loot_filter_init(const D2ModConfig *options, HMODULE module)
     if (!options) return 0;
     if (!options->loot_filter_enabled) return 1;
     if (!module || !client || !common) return 0;
-    site = client + 0x63bf9;
-    hover_site = client + 0x8729e;
-    cursor_site = client + 0x155f4;
+    site = client + D2CLIENT_HOOK_LOOT_LABEL_OFFSET;
+    hover_site = client + D2CLIENT_HOOK_LOOT_HOVER_OFFSET;
+    cursor_site = client + D2CLIENT_HOOK_LOOT_CURSOR_OFFSET;
     if (memcmp(site, expected, sizeof(expected)) != 0) return 0;
     if (hover_site[0] != 0xe8 ||
         *(DWORD *)(hover_site + 1) !=
-            (DWORD)(client + 0x14cf0 - (hover_site + 5))) return 0;
+            (DWORD)(client + D2CLIENT_FN_GET_SELECTED_UNIT_OFFSET -
+                    (hover_site + 5))) return 0;
     if (cursor_site[0] != 0xe8 ||
         *(DWORD *)(cursor_site + 1) !=
-            (DWORD)(client + 0x14db0 - (cursor_site + 5))) return 0;
-    item_text.raw = GetProcAddress(common, MAKEINTRESOURCEA(10600));
-    unit_stat.raw = GetProcAddress(common, MAKEINTRESOURCEA(10519));
-    quality.raw = GetProcAddress(common, MAKEINTRESOURCEA(10695));
+            (DWORD)(client + D2CLIENT_FN_SET_CURSOR_TARGET_OFFSET -
+                    (cursor_site + 5))) return 0;
+    item_text.raw = GetProcAddress(
+        common, MAKEINTRESOURCEA(D2COMMON_GET_ITEM_TEXT_ORDINAL));
+    unit_stat.raw = GetProcAddress(
+        common, MAKEINTRESOURCEA(D2COMMON_GET_UNIT_STAT_ORDINAL));
+    quality.raw = GetProcAddress(
+        common, MAKEINTRESOURCEA(D2COMMON_GET_ITEM_QUALITY_ORDINAL));
     if (!item_text.raw || !unit_stat.raw || !quality.raw) return 0;
     length = GetModuleFileNameA(module, path, sizeof(path));
     if (!length || length >= sizeof(path)) return 0;

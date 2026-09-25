@@ -3,6 +3,7 @@
 #include "item_labels.h"
 #include "game_ui.h"
 #include "loot_filter.h"
+#include "d2_109b.h"
 
 static BYTE show_key_down[256];
 static CRITICAL_SECTION labels_lock;
@@ -10,14 +11,14 @@ static volatile LONG item_labels_on;
 
 static int is_interactive_target(DWORD type)
 {
-    return type == 1 || type == 2;
+    return type == D2UNIT_MONSTER || type == D2UNIT_OBJECT;
 }
 
 static void refresh_object_target(BYTE *client)
 {
     typedef void (__cdecl *update_cursor_fn)(void);
-    *(DWORD *)(client + 0x116dd4) = 0;
-    ((update_cursor_fn)(client + 0x14fc0))();
+    *(DWORD *)(client + D2CLIENT_TARGET_REFRESH_OFFSET) = 0;
+    ((update_cursor_fn)(client + D2CLIENT_FN_UPDATE_CURSOR_TARGET_OFFSET))();
 }
 
 static void __cdecl draw_item_labels(void)
@@ -26,17 +27,17 @@ static void __cdecl draw_item_labels(void)
     typedef void (__cdecl *draw_fn)(void);
     typedef void *(__cdecl *selected_unit_fn)(void);
     typedef void (__fastcall *draw_hover_fn)(void *);
-    DWORD *selected = (DWORD *)(client + 0x116dd0);
-    DWORD type = *(DWORD *)(client + 0x116db8);
+    DWORD *selected = (DWORD *)(client + D2CLIENT_TARGET_ID_OFFSET);
+    DWORD type = *(DWORD *)(client + D2CLIENT_TARGET_TYPE_OFFSET);
     int had_object = *selected && is_interactive_target(type);
     void *object = NULL;
 
-    ((draw_fn)(client + 0x63b60))();
+    ((draw_fn)(client + D2CLIENT_FN_DRAW_ITEM_LABELS_OFFSET))();
     if (had_object && item_labels_on) {
         refresh_object_target(client);
-        object = ((selected_unit_fn)(client + 0x14cf0))();
+        object = ((selected_unit_fn)(client + D2CLIENT_FN_GET_SELECTED_UNIT_OFFSET))();
         if (object && is_interactive_target(*(DWORD *)object))
-            ((draw_hover_fn)(client + 0x861c0))(object);
+            ((draw_hover_fn)(client + D2CLIENT_FN_DRAW_HOVER_OFFSET))(object);
     }
 }
 
@@ -44,15 +45,17 @@ static void __cdecl draw_item_labels(void)
    A selected unit in that list already has its hovered ground label. */
 static int ground_label_contains(BYTE *client, const void *selected)
 {
-    DWORD count = *(const DWORD *)(client + 0x124890);
+    DWORD count = *(const DWORD *)(client + D2CLIENT_ITEM_LABEL_COUNT_OFFSET);
     DWORD i;
-    const BYTE *labels = client + 0x122490;
-    if (!selected || *(const DWORD *)selected != 4)
+    const BYTE *labels = client + D2CLIENT_ITEM_LABELS_OFFSET;
+    if (!selected ||
+        *(const DWORD *)selected != D2UNIT_ITEM)
         return 0;
-    if (count > 32)
-        count = 32;
+    if (count > D2CLIENT_ITEM_LABEL_MAX)
+        count = D2CLIENT_ITEM_LABEL_MAX;
     for (i = 0; i < count; ++i)
-        if (*(const void *const *)(labels + i * 0x120 + 0x10) == selected)
+        if (*(const void *const *)(labels + i * D2CLIENT_ITEM_LABEL_STRIDE +
+                                  D2CLIENT_ITEM_LABEL_UNIT_OFFSET) == selected)
             return 1;
     return 0;
 }
@@ -63,22 +66,26 @@ static void select_clicked_label(BYTE *client)
 {
     typedef int (__cdecl *cursor_fn)(void);
     typedef void (__fastcall *select_unit_fn)(void *);
-    const BYTE *labels = client + 0x122490;
-    DWORD count = *(const DWORD *)(client + 0x124890);
-    int x = ((cursor_fn)(client + 0xb6670))();
-    int y = ((cursor_fn)(client + 0xb6680))();
+    const BYTE *labels = client + D2CLIENT_ITEM_LABELS_OFFSET;
+    DWORD count = *(const DWORD *)(client + D2CLIENT_ITEM_LABEL_COUNT_OFFSET);
+    int x = ((cursor_fn)(client + D2CLIENT_FN_CURSOR_X_OFFSET))();
+    int y = ((cursor_fn)(client + D2CLIENT_FN_CURSOR_Y_OFFSET))();
     DWORD i;
 
-    if (count > 32) count = 32;
+    if (count > D2CLIENT_ITEM_LABEL_MAX) count = D2CLIENT_ITEM_LABEL_MAX;
     /* Labels draw in list order, so the last hit is the one on top. */
     for (i = count; i > 0; --i) {
-        const BYTE *label = labels + (i - 1) * 0x120;
-        void *item = *(void *const *)(label + 0x10);
-        if (item && *(const DWORD *)item == 4 &&
-            *(const DWORD *)(label + 0x118) == 5 &&
-            x >= *(const int *)label && x <= *(const int *)(label + 8) &&
-            y >= *(const int *)(label + 4) && y <= *(const int *)(label + 12)) {
-            ((select_unit_fn)(client + 0x14d60))(item);
+        const BYTE *label = labels + (i - 1) * D2CLIENT_ITEM_LABEL_STRIDE;
+        void *item = *(void *const *)(label + D2CLIENT_ITEM_LABEL_UNIT_OFFSET);
+        if (item &&
+            *(const DWORD *)item == D2UNIT_ITEM &&
+            *(const DWORD *)(label + D2CLIENT_ITEM_LABEL_STATE_OFFSET) ==
+            D2CLIENT_ITEM_LABEL_GROUND_STATE &&
+            x >= *(const int *)(label + D2CLIENT_ITEM_LABEL_LEFT_OFFSET) &&
+            x <= *(const int *)(label + D2CLIENT_ITEM_LABEL_RIGHT_OFFSET) &&
+            y >= *(const int *)(label + D2CLIENT_ITEM_LABEL_TOP_OFFSET) &&
+            y <= *(const int *)(label + D2CLIENT_ITEM_LABEL_BOTTOM_OFFSET)) {
+            ((select_unit_fn)(client + D2CLIENT_FN_SELECT_LABEL_TARGET_OFFSET))(item);
             return;
         }
     }
@@ -93,15 +100,17 @@ static void __fastcall draw_labels_before_tooltip(void *selected)
        guard here since it no longer runs through the original gated site */
     if (item_labels_on && game_menu_open())
         return;
-    if (item_labels_on && ((mode_getter_fn)(client + 0x14a20))() != 3) {
+    if (item_labels_on &&
+        ((mode_getter_fn)(client + D2CLIENT_FN_GAME_MODE_OFFSET))() !=
+            D2CLIENT_GAME_MODE_SKIP_LABELS) {
         draw_item_labels();
         if (ground_label_contains(client, selected))
             return;
     }
-    if (selected && *(const DWORD *)selected == 4 &&
+    if (selected && *(const DWORD *)selected == D2UNIT_ITEM &&
         !loot_filter_show_item(selected))
         return;
-    ((draw_hover_fn)(client + 0x861c0))(selected);
+    ((draw_hover_fn)(client + D2CLIENT_FN_DRAW_HOVER_OFFSET))(selected);
 }
 
 /* the flag-gated draw_call site now no-ops: labels are drawn from the
@@ -118,16 +127,19 @@ int item_labels_init(void)
     DWORD expected, old_render, old_call, old_tooltip, unused;
     InitializeCriticalSection(&labels_lock);
     if (!client) return 0;
-    render = client + 0x877d2;
-    draw_call = client + 0x877e5;
-    tooltip_call = client + 0x872a5;
-    expected = (DWORD)(client + 0x125a68);
+    render = client + D2CLIENT_HOOK_LABEL_RENDER_FLAG_OFFSET;
+    draw_call = client + D2CLIENT_HOOK_LABEL_DRAW_CALL_OFFSET;
+    tooltip_call = client + D2CLIENT_HOOK_LABEL_TOOLTIP_OFFSET;
+    expected = (DWORD)(client + D2CLIENT_ITEM_LABEL_RENDER_FLAG_OFFSET);
     if (render[0] != 0xa1 || *(DWORD *)(render + 1) != expected ||
         draw_call[0] != 0xe8 ||
-        *(DWORD *)(draw_call + 1) != (DWORD)(client + 0x63b60 - (draw_call + 5)) ||
+        *(DWORD *)(draw_call + 1) !=
+            (DWORD)(client + D2CLIENT_FN_DRAW_ITEM_LABELS_OFFSET -
+                    (draw_call + 5)) ||
         tooltip_call[0] != 0xe8 ||
         *(DWORD *)(tooltip_call + 1) !=
-            (DWORD)(client + 0x861c0 - (tooltip_call + 5)))
+            (DWORD)(client + D2CLIENT_FN_DRAW_HOVER_OFFSET -
+                    (tooltip_call + 5)))
         return 0;
     if (!VirtualProtect(render, 5, PAGE_EXECUTE_READWRITE, &old_render))
         return 0;
@@ -159,11 +171,12 @@ static int is_show_items_key(WPARAM key)
     const BYTE *bindings;
     unsigned i;
     if (!client || key > 0xff) return 0;
-    bindings = (const BYTE *)client + 0x11e128;
-    for (i = 0; i < 114; ++i) {
-        const BYTE *entry = bindings + i * 10;
-        if (*(const DWORD *)entry == 37 &&
-            *(const WORD *)(entry + 4) == key)
+    bindings = (const BYTE *)client + D2CLIENT_KEY_BINDINGS_OFFSET;
+    for (i = 0; i < D2CLIENT_KEY_BINDING_COUNT; ++i) {
+        const BYTE *entry = bindings + i * D2CLIENT_KEY_BINDING_STRIDE;
+        if (*(const DWORD *)(entry + D2CLIENT_KEY_BINDING_ACTION_OFFSET) ==
+            D2ACTION_SHOW_ITEMS &&
+            *(const WORD *)(entry + D2CLIENT_KEY_BINDING_KEY_OFFSET) == key)
             return 1;
     }
     return 0;
@@ -179,8 +192,9 @@ int item_labels_on_message(MSG *msg, HWND game_window)
         /* D2Client's world-target functions require an active game.
            Calling them from the front end can dereference stale target state. */
         if (game_active() && !game_menu_open()) {
-            if (*(DWORD *)(client + 0x116dd0) &&
-                is_interactive_target(*(DWORD *)(client + 0x116db8)))
+            if (*(DWORD *)(client + D2CLIENT_TARGET_ID_OFFSET) &&
+                is_interactive_target(
+                    *(DWORD *)(client + D2CLIENT_TARGET_TYPE_OFFSET)))
                 refresh_object_target(client);
             select_clicked_label(client);
         }

@@ -3,6 +3,7 @@
 #include <string.h>
 #include "quick_cast.h"
 #include "game_ui.h"
+#include "d2_109b.h"
 
 #define QC_MESSAGE (WM_APP + 0x310)
 #define RBUTTON_INJECT_MARK ((ULONG_PTR)0x6a6d6f64)
@@ -22,13 +23,17 @@ static int is_skill_key(WPARAM key)
     unsigned i;
     if (!client || key > 0xff)
         return 0;
-    bindings = (const BYTE *)client + 0x11e128;
-    for (i = 0; i < 114; ++i) {
-        const BYTE *entry = bindings + i * 10;
-        DWORD action = *(const DWORD *)entry;
-        WORD bound_key = *(const WORD *)(entry + 4);
-        if (((action >= 14 && action <= 21) ||
-             (action >= 46 && action <= 53)) && bound_key == key)
+    bindings = (const BYTE *)client + D2CLIENT_KEY_BINDINGS_OFFSET;
+    for (i = 0; i < D2CLIENT_KEY_BINDING_COUNT; ++i) {
+        const BYTE *entry = bindings + i * D2CLIENT_KEY_BINDING_STRIDE;
+        DWORD action = *(const DWORD *)(entry +
+            D2CLIENT_KEY_BINDING_ACTION_OFFSET);
+        WORD bound_key = *(const WORD *)(entry +
+            D2CLIENT_KEY_BINDING_KEY_OFFSET);
+        if (((action >= D2ACTION_SKILL_RANGE1_FIRST &&
+              action <= D2ACTION_SKILL_RANGE1_LAST) ||
+             (action >= D2ACTION_SKILL_RANGE2_FIRST &&
+              action <= D2ACTION_SKILL_RANGE2_LAST)) && bound_key == key)
             return 1;
     }
     return 0;
