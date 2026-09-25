@@ -9,9 +9,6 @@ static void set_defaults(D2ModConfig *config)
     config->gold_pickup_in_town = 0;
     config->rune_color = 1;
     config->gold_pickup_range = 4;
-    config->gold_scan_interval_ms = 30;
-    config->gold_request_interval_ms = 50;
-    config->gold_retry_interval_ms = 500;
     config->loot_filter_enabled = 0;
     config->min_gold = 0;
 }
@@ -54,15 +51,6 @@ void read_options(HMODULE module, D2ModConfig *config)
        Larger values make the interaction path move the player toward it. */
     if (config->gold_pickup_range > 4)
         config->gold_pickup_range = 4;
-
-    value = GetPrivateProfileIntA("Mods", "GoldScanIntervalMs", 30, path);
-    config->gold_scan_interval_ms = (DWORD)(value < 10 ? 10 : value > 1000 ? 1000 : value);
-
-    value = GetPrivateProfileIntA("Mods", "GoldRequestIntervalMs", 50, path);
-    config->gold_request_interval_ms = (DWORD)(value < 10 ? 10 : value > 1000 ? 1000 : value);
-
-    value = GetPrivateProfileIntA("Mods", "GoldRetryIntervalMs", 500, path);
-    config->gold_retry_interval_ms = (DWORD)(value < 50 ? 50 : value > 10000 ? 10000 : value);
 
     config->loot_filter_enabled = GetPrivateProfileIntA("LootFilter", "Enabled", 0, path) != 0;
     value = GetPrivateProfileIntA("LootFilter", "MinGold", 0, path);

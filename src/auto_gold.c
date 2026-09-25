@@ -83,7 +83,7 @@ static void pick_up_nearby_gold_locked(void)
         return;
 
     now = GetTickCount();
-    if ((DWORD)(now - last_gold_at) < config->gold_request_interval_ms)
+    if ((DWORD)(now - last_gold_at) < AUTO_GOLD_REQUEST_INTERVAL_MS)
         return;
 
     items = (const BYTE *const *)(client + 0x125d78 + 4 * 128 * sizeof(void *));
@@ -96,7 +96,7 @@ static void pick_up_nearby_gold_locked(void)
             id = *(const DWORD *)(item + 0x08);
             slot = id % 32;
             if (recent_gold[slot].id == id &&
-                (DWORD)(now - recent_gold[slot].at) < config->gold_retry_interval_ms)
+                (DWORD)(now - recent_gold[slot].at) < AUTO_GOLD_RETRY_INTERVAL_MS)
                 continue;
             record = item_text(*(const DWORD *)(item + 0x04));
             if (!record || *(const DWORD *)(record + 0x144) != 0x20646c67)

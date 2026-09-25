@@ -35,9 +35,6 @@ AutoGoldPickup=1
 GoldPickupInTown=0
 RuneColor=1
 GoldPickupRange=4
-GoldScanIntervalMs=30
-GoldRequestIntervalMs=50
-GoldRetryIntervalMs=500
 
 [LootFilter]
 ; 0 = off, 1 = on. Hides ground labels and their hover highlights.
@@ -70,7 +67,9 @@ Meaning of the settings:
   used by D2Game, clamped to 1–4. `4` is the maximum range at which
   D2Game 1.09b performs an immediate item pickup instead of starting a
   move-toward-item interaction because of distance.
-- `GoldScanIntervalMs`, `GoldRequestIntervalMs`, `GoldRetryIntervalMs`: timing controls for gold scanning and pickup requests.
+- Auto-gold timing is fixed at a 40 ms scan interval, 40 ms minimum between
+  pickup requests, and 200 ms before retrying the same pile. The 40 ms values
+  match Diablo II's 25 Hz game simulation.
 - `[LootFilter] Enabled=1`: filter ground labels shown by the game's Show Items binding, including when `AlwaysShowItems` is on, and suppress their hover highlights. It does not delete items or change automatic gold pickup.
 - `MinGold`: hides piles below the specified amount; a pile of exactly that amount remains visible.
 - `loot_filter.ini`: each named item type has a hex quality mask. `0x01` shows

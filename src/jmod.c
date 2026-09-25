@@ -126,7 +126,7 @@ static DWORD WINAPI start_hook(void *unused)
 
         was_focused = focused;
         was_game_active = active;
-        Sleep(config.auto_gold_pickup && active ? config.gold_scan_interval_ms : 100);
+        Sleep(config.auto_gold_pickup && active ? AUTO_GOLD_SCAN_INTERVAL_MS : 100);
     }
     return 0;
 }
