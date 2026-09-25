@@ -19,6 +19,12 @@
 #define D2CLIENT_UI_MODE_STASH                     12u
 #define D2CLIENT_UI_MODE_CUBE                      14u
 #define D2CLIENT_CURSOR_ITEM_PTR_OFFSET             0x12c2a8u
+#define D2CLIENT_UI_NPCSHOP_STATE_OFFSET            0x125a64u
+#define D2CLIENT_DIFFICULTY_OFFSET                  0x111d5cu
+#define D2CLIENT_INTERACTED_NPC_ID_OFFSET           0x12115du
+#define D2CLIENT_INTERACTED_NPC_ACTIVE_OFFSET       0x121161u
+#define D2CLIENT_INTERACTED_NPC_CLASS_ID_OFFSET     0x121165u
+#define D2CLIENT_ITEM_PRICE_CONTEXT_OFFSET          0x12117bu
 
 /* D2Client functions. */
 #define D2CLIENT_FN_GAME_MODE_OFFSET               0x14a20u
@@ -33,6 +39,7 @@
 #define D2CLIENT_FN_IS_EXPANSION_OFFSET            0x0ba00u
 #define D2CLIENT_FN_INVENTORY_CLICK_OFFSET         0x40b00u
 #define D2CLIENT_FN_DRAW_CURSOR_OFFSET              0xb6570u
+#define D2CLIENT_FN_PLAY_SOUND_OFFSET               0xb4360u
 
 /* D2Client patch sites. */
 #define D2CLIENT_HOOK_LOOT_LABEL_OFFSET            0x63bf9u
@@ -105,6 +112,7 @@
 #define D2ITEM_CODE_3CHAR_MASK                     0x00ffffffu
 #define D2ITEM_CODE_GOLD                           0x20646c67u
 #define D2ITEM_CODE_GOLD_3CHAR                     0x00646c67u
+#define D2STAT_LEVEL                               12u
 #define D2STAT_GOLD                                14u
 #define D2ITEM_HORADRIC_CUBE_CLASS_ID              549u
 
@@ -127,6 +135,16 @@
 #define D2NET_PACKET_INSERT_ITEM_Y_OFFSET          9u
 #define D2NET_PACKET_INSERT_ITEM_PAGE_OFFSET       13u
 
+/* Client-to-server NPC sell packet. */
+#define D2NET_PACKET_NPC_SELL                      0x33u
+#define D2NET_PACKET_NPC_SELL_SIZE                 17u
+#define D2NET_PACKET_NPC_SELL_NPC_ID_OFFSET        1u
+#define D2NET_PACKET_NPC_SELL_ITEM_ID_OFFSET       5u
+#define D2NET_PACKET_NPC_SELL_BUFFER_OFFSET        9u
+#define D2NET_PACKET_NPC_SELL_PRICE_OFFSET         13u
+#define D2TRANSACTION_SELL                         1
+#define D2SOUND_ITEM_GOLD                          0xddu
+
 /* Client-to-server item pickup packet. */
 #define D2NET_PACKET_PICKUP_ITEM                   0x16u
 #define D2NET_PACKET_PICKUP_ITEM_SIZE              13u
@@ -141,6 +159,8 @@
 #define D2COMMON_INVENTORY_GET_CURSOR_ITEM_ORDINAL 10262
 #define D2COMMON_GET_INVENTORY_RECORD_ID_ORDINAL   10409
 #define D2COMMON_GET_ITEM_PAGE_ORDINAL             10719
+#define D2COMMON_ITEMS_IS_NOT_QUEST_ORDINAL        10740
+#define D2COMMON_GET_TRANSACTION_COST_ORDINAL      10775
 #define D2COMMON_GET_ROOM_ORDINAL                  10342
 #define D2COMMON_TEST_INTERACTION_COLLISION_ORDINAL 10363
 #define D2COMMON_UNIT_DISTANCE_ORDINAL             10399

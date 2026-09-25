@@ -19,7 +19,12 @@ typedef int (__stdcall *get_inventory_record_id_fn)(void *, int, int);
 typedef BYTE (__stdcall *get_item_page_fn)(void *);
 typedef DWORD (__stdcall *send_packet_fn)(DWORD, const BYTE *, DWORD);
 typedef DWORD (__fastcall *is_expansion_fn)(void);
+typedef int (__stdcall *get_unit_stat_fn)(const void *, DWORD);
+typedef int (__stdcall *is_not_quest_item_fn)(const void *);
+typedef int (__stdcall *get_transaction_cost_fn)(
+    void *, int, void *, int, int, int);
 typedef void (__cdecl *cursor_draw_fn)(void);
+typedef int (__fastcall *play_sound_fn)(DWORD, DWORD, DWORD, DWORD, DWORD);
 
 typedef struct PendingQuickMove {
     int active;
@@ -50,7 +55,11 @@ static get_inventory_record_id_fn get_inventory_record_id;
 static get_item_page_fn get_item_page;
 static send_packet_fn send_packet;
 static is_expansion_fn is_expansion;
+static get_unit_stat_fn get_unit_stat;
+static is_not_quest_item_fn is_not_quest_item;
+static get_transaction_cost_fn get_transaction_cost;
 static cursor_draw_fn original_cursor_draw;
+static play_sound_fn play_sound;
 static CRITICAL_SECTION state_lock;
 static int state_lock_ready;
 static PendingQuickMove pending;
@@ -193,6 +202,98 @@ static void send_insert_item(DWORD item_id, int x, int y, DWORD page)
     (void)send_packet(0, packet, sizeof(packet));
 }
 
+static int merchant_shop_open(void)
+{
+    return client_base &&
+        *(const DWORD *)(client_base + D2CLIENT_UI_NPCSHOP_STATE_OFFSET) != 0 &&
+        *(const DWORD *)(client_base + D2CLIENT_INTERACTED_NPC_ACTIVE_OFFSET) != 0 &&
+        *(const DWORD *)(client_base + D2CLIENT_INTERACTED_NPC_ID_OFFSET) != 0;
+}
+
+static void send_sell_item(void *player, void *item)
+{
+    BYTE packet[D2NET_PACKET_NPC_SELL_SIZE] = { 0 };
+    DWORD npc_id, item_id, buffer_type = 0;
+    DWORD price;
+    int npc_class_id, difficulty, player_level;
+    void *price_context;
+
+    npc_id = *(const DWORD *)(
+        client_base + D2CLIENT_INTERACTED_NPC_ID_OFFSET);
+    npc_class_id = *(const int *)(
+        client_base + D2CLIENT_INTERACTED_NPC_CLASS_ID_OFFSET);
+    difficulty = *(const BYTE *)(
+        client_base + D2CLIENT_DIFFICULTY_OFFSET);
+    price_context = *(void **)(
+        client_base + D2CLIENT_ITEM_PRICE_CONTEXT_OFFSET);
+    item_id = *(const DWORD *)((const BYTE *)item + D2UNIT_ID_OFFSET);
+    player_level = get_unit_stat(player, D2STAT_LEVEL);
+
+    /* 1.09b's #10775 argument order was verified from D2Client's sell path:
+       item, difficulty, price context, NPC class, transaction type, level. */
+    price = (DWORD)get_transaction_cost(
+        item, difficulty, price_context, npc_class_id,
+        D2TRANSACTION_SELL, player_level);
+
+    packet[0] = D2NET_PACKET_NPC_SELL;
+    CopyMemory(packet + D2NET_PACKET_NPC_SELL_NPC_ID_OFFSET,
+               &npc_id, sizeof(npc_id));
+    CopyMemory(packet + D2NET_PACKET_NPC_SELL_ITEM_ID_OFFSET,
+               &item_id, sizeof(item_id));
+    CopyMemory(packet + D2NET_PACKET_NPC_SELL_BUFFER_OFFSET,
+               &buffer_type, sizeof(buffer_type));
+    CopyMemory(packet + D2NET_PACKET_NPC_SELL_PRICE_OFFSET,
+               &price, sizeof(price));
+    if (send_packet(0, packet, sizeof(packet)) && play_sound)
+        (void)play_sound(D2SOUND_ITEM_GOLD, 0, 0, 0, 0);
+}
+
+static int try_quick_sell(void *player, void *inventory,
+                          int mouse_x, int mouse_y, DWORD mouse_flags,
+                          const BYTE *source_grid, DWORD source_page)
+{
+    void *item;
+    int source_x, source_y, item_x, item_y, source_record;
+
+    if (!config || !config->inventory_quick_move ||
+        !(mouse_flags & MK_CONTROL) || (mouse_flags & MK_SHIFT) ||
+        source_page != D2INVPAGE_INVENTORY || !merchant_shop_open())
+        return 0;
+
+    /* Ctrl+click is owned by Quick Sell while the real store panel is open.
+       Never fall through to vanilla pickup for an unsellable/empty slot. */
+    if (!player || !inventory || get_cursor_item(inventory))
+        return 1;
+
+    if (!screen_to_grid(source_grid, mouse_x, mouse_y,
+                        &source_x, &source_y))
+        return 1;
+
+    source_record = get_inventory_record_id(
+        player, D2INVPAGE_INVENTORY, is_expansion() != 0);
+    if (source_record < 0)
+        return 1;
+
+    item_x = item_y = 0;
+    item = get_item_from_page(inventory, source_x, source_y,
+                              &item_x, &item_y, source_record,
+                              D2INVPAGE_INVENTORY);
+    if (!item ||
+        *(const DWORD *)item != D2UNIT_ITEM ||
+        *(const DWORD *)((const BYTE *)item + D2UNIT_MODE_OFFSET) !=
+            D2ITEM_MODE_STORED ||
+        get_item_page(item) != D2INVPAGE_INVENTORY)
+        return 1;
+
+    /* Vanilla 1.09b performs this exact check immediately after computing
+       sell value; quest/unsellable items stay in the inventory. */
+    if (!is_not_quest_item(item))
+        return 1;
+
+    send_sell_item(player, item);
+    return 1;
+}
+
 static int begin_quick_move(void *player, void *inventory,
                             int mouse_x, int mouse_y, DWORD mouse_flags,
                             const BYTE *source_grid, DWORD source_page)
@@ -290,6 +391,10 @@ static int __fastcall inventory_click_hook(
             return 1;
         inventory_qol_reset();
     }
+
+    if (try_quick_sell(player, inventory, mouse_x, mouse_y,
+                       mouse_flags, grid, source_page))
+        return 1;
 
     action = begin_quick_move(player, inventory, mouse_x, mouse_y,
                               mouse_flags, grid, source_page);
@@ -486,6 +591,9 @@ static int resolve_functions(void)
     union { FARPROC raw; inventory_get_cursor_item_fn typed; } cursor_item;
     union { FARPROC raw; get_inventory_record_id_fn typed; } record_id;
     union { FARPROC raw; get_item_page_fn typed; } item_page;
+    union { FARPROC raw; get_unit_stat_fn typed; } unit_stat;
+    union { FARPROC raw; is_not_quest_item_fn typed; } not_quest;
+    union { FARPROC raw; get_transaction_cost_fn typed; } transaction_cost;
     union { FARPROC raw; send_packet_fn typed; } packet;
 
     if (!common || !net)
@@ -505,11 +613,18 @@ static int resolve_functions(void)
             D2COMMON_GET_INVENTORY_RECORD_ID_ORDINAL));
     item_page.raw = GetProcAddress(
         common, MAKEINTRESOURCEA(D2COMMON_GET_ITEM_PAGE_ORDINAL));
+    unit_stat.raw = GetProcAddress(
+        common, MAKEINTRESOURCEA(D2COMMON_GET_UNIT_STAT_ORDINAL));
+    not_quest.raw = GetProcAddress(
+        common, MAKEINTRESOURCEA(D2COMMON_ITEMS_IS_NOT_QUEST_ORDINAL));
+    transaction_cost.raw = GetProcAddress(
+        common, MAKEINTRESOURCEA(D2COMMON_GET_TRANSACTION_COST_ORDINAL));
     packet.raw = GetProcAddress(
         net, MAKEINTRESOURCEA(D2NET_SEND_PACKET_ORDINAL));
 
     if (!free_pos.raw || !item_from_page.raw || !cursor_item.raw ||
-        !record_id.raw || !item_page.raw || !packet.raw)
+        !record_id.raw || !item_page.raw || !unit_stat.raw ||
+        !not_quest.raw || !transaction_cost.raw || !packet.raw)
         return 0;
 
     get_free_position = free_pos.typed;
@@ -517,6 +632,9 @@ static int resolve_functions(void)
     get_cursor_item = cursor_item.typed;
     get_inventory_record_id = record_id.typed;
     get_item_page = item_page.typed;
+    get_unit_stat = unit_stat.typed;
+    is_not_quest_item = not_quest.typed;
+    get_transaction_cost = transaction_cost.typed;
     send_packet = packet.typed;
     return 1;
 }
@@ -563,6 +681,8 @@ int inventory_qol_init(const D2ModConfig *options)
     original_inventory_click = (inventory_click_fn)original;
     original_cursor_draw = (cursor_draw_fn)(
         client_base + D2CLIENT_FN_DRAW_CURSOR_OFFSET);
+    play_sound = (play_sound_fn)(
+        client_base + D2CLIENT_FN_PLAY_SOUND_OFFSET);
     is_expansion = (is_expansion_fn)(
         client_base + D2CLIENT_FN_IS_EXPANSION_OFFSET);
 
