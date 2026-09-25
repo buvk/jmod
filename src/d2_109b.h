@@ -17,6 +17,7 @@
 #define D2CLIENT_UNIT_HASH_TABLES_OFFSET           0x125d78u
 #define D2CLIENT_UI_MODE_OFFSET                    0x120d54u
 #define D2CLIENT_UI_MODE_STASH                     12u
+#define D2CLIENT_UI_MODE_CUBE                      14u
 #define D2CLIENT_CURSOR_ITEM_PTR_OFFSET             0x12c2a8u
 
 /* D2Client functions. */
@@ -42,6 +43,7 @@
 #define D2CLIENT_HOOK_LABEL_DRAW_CALL_OFFSET       0x877e5u
 #define D2CLIENT_HOOK_INVENTORY_CLICK_OFFSET       0x405ecu
 #define D2CLIENT_HOOK_STASH_CLICK_OFFSET           0x40a2fu
+#define D2CLIENT_HOOK_CUBE_CLICK_OFFSET            0x40976u
 #define D2CLIENT_HOOK_DRAW_CURSOR_1_OFFSET          0x090d3u
 #define D2CLIENT_HOOK_DRAW_CURSOR_2_OFFSET          0x0aa65u
 #define D2CLIENT_HOOK_DRAW_CURSOR_3_OFFSET          0x35fffu
@@ -80,6 +82,7 @@
 #define D2CLIENT_INVENTORY_GRID_CELL_WIDTH_OFFSET  0x14u
 #define D2CLIENT_INVENTORY_GRID_CELL_HEIGHT_OFFSET 0x15u
 #define D2INVPAGE_INVENTORY                        0u
+#define D2INVPAGE_CUBE                             3u
 #define D2INVPAGE_STASH                            4u
 
 /* Client ground-label records. */
@@ -103,6 +106,7 @@
 #define D2ITEM_CODE_GOLD                           0x20646c67u
 #define D2ITEM_CODE_GOLD_3CHAR                     0x00646c67u
 #define D2STAT_GOLD                                14u
+#define D2ITEM_HORADRIC_CUBE_CLASS_ID              549u
 
 /* Town level IDs. */
 #define D2LEVEL_ROGUE_ENCAMPMENT                   1u

@@ -28,6 +28,7 @@ typedef struct PendingQuickMove {
     DWORD started_at;
     DWORD item_id;
     DWORD target_page;
+    DWORD ui_mode;
     int target_record;
     void *inventory;
 } PendingQuickMove;
@@ -88,11 +89,41 @@ static int screen_to_grid(const BYTE *grid, int x, int y,
     return 1;
 }
 
-static int stash_open(void)
+static DWORD current_ui_mode(void)
 {
-    return client_base &&
-        *(const DWORD *)(client_base + D2CLIENT_UI_MODE_OFFSET) ==
-            D2CLIENT_UI_MODE_STASH;
+    return client_base ?
+        *(const DWORD *)(client_base + D2CLIENT_UI_MODE_OFFSET) : 0;
+}
+
+static int quick_move_target(DWORD source_page, DWORD *target_page,
+                             DWORD *ui_mode)
+{
+    DWORD mode;
+
+    if (!target_page || !ui_mode)
+        return 0;
+
+    mode = current_ui_mode();
+    if (mode == D2CLIENT_UI_MODE_STASH) {
+        if (source_page == D2INVPAGE_INVENTORY)
+            *target_page = D2INVPAGE_STASH;
+        else if (source_page == D2INVPAGE_STASH)
+            *target_page = D2INVPAGE_INVENTORY;
+        else
+            return 0;
+    } else if (mode == D2CLIENT_UI_MODE_CUBE) {
+        if (source_page == D2INVPAGE_INVENTORY)
+            *target_page = D2INVPAGE_CUBE;
+        else if (source_page == D2INVPAGE_CUBE)
+            *target_page = D2INVPAGE_INVENTORY;
+        else
+            return 0;
+    } else {
+        return 0;
+    }
+
+    *ui_mode = mode;
+    return 1;
 }
 
 static int pending_active_locked(void)
@@ -170,17 +201,16 @@ static int begin_quick_move(void *player, void *inventory,
     int source_x, source_y, item_x, item_y;
     int source_record, target_record;
     int free_x, free_y;
-    DWORD target_page;
+    DWORD target_page, ui_mode;
 
     if (!config || !config->inventory_quick_move ||
-        !(mouse_flags & MK_CONTROL) || (mouse_flags & MK_SHIFT) ||
-        !stash_open())
+        !(mouse_flags & MK_CONTROL) || (mouse_flags & MK_SHIFT))
         return 0;
 
-    if (!player || !inventory ||
-        (source_page != D2INVPAGE_INVENTORY &&
-         source_page != D2INVPAGE_STASH) ||
-        get_cursor_item(inventory))
+    if (!player || !inventory || get_cursor_item(inventory))
+        return 0;
+
+    if (!quick_move_target(source_page, &target_page, &ui_mode))
         return 0;
 
     if (!screen_to_grid(source_grid, mouse_x, mouse_y,
@@ -205,8 +235,13 @@ static int begin_quick_move(void *player, void *inventory,
         get_item_page(item) != (BYTE)source_page)
         return 1;
 
-    target_page = source_page == D2INVPAGE_INVENTORY ?
-        D2INVPAGE_STASH : D2INVPAGE_INVENTORY;
+    /* The open container decides the destination: stash or Horadric Cube.
+       Never try to put the Cube item inside itself. */
+    if (target_page == D2INVPAGE_CUBE &&
+        *(const DWORD *)((const BYTE *)item + D2UNIT_CLASS_ID_OFFSET) ==
+            D2ITEM_HORADRIC_CUBE_CLASS_ID)
+        return 1;
+
     target_record = get_inventory_record_id(
         player, (int)target_page, is_expansion() != 0);
     if (target_record < 0)
@@ -230,6 +265,7 @@ static int begin_quick_move(void *player, void *inventory,
     pending.started_at = GetTickCount();
     pending.item_id = *(const DWORD *)((const BYTE *)item + D2UNIT_ID_OFFSET);
     pending.target_page = target_page;
+    pending.ui_mode = ui_mode;
     pending.target_record = target_record;
     pending.inventory = inventory;
     visual.active = 1;
@@ -291,7 +327,7 @@ static int finish_pending(DWORD generation)
     move = pending;
     LeaveCriticalSection(&state_lock);
 
-    if (!game_active() || !stash_open()) {
+    if (!game_active() || current_ui_mode() != move.ui_mode) {
         inventory_qol_reset();
         return 1;
     }
@@ -487,7 +523,7 @@ static int resolve_functions(void)
 
 int inventory_qol_init(const D2ModConfig *options)
 {
-    BYTE *inventory_site, *stash_site, *original;
+    BYTE *inventory_site, *stash_site, *cube_site, *original;
     BYTE *draw_sites[6];
     DWORD old_inventory, old_stash, unused;
     DWORD i;
@@ -505,6 +541,7 @@ int inventory_qol_init(const D2ModConfig *options)
     original = client_base + D2CLIENT_FN_INVENTORY_CLICK_OFFSET;
     inventory_site = client_base + D2CLIENT_HOOK_INVENTORY_CLICK_OFFSET;
     stash_site = client_base + D2CLIENT_HOOK_STASH_CLICK_OFFSET;
+    cube_site = client_base + D2CLIENT_HOOK_CUBE_CLICK_OFFSET;
     draw_sites[0] = client_base + D2CLIENT_HOOK_DRAW_CURSOR_1_OFFSET;
     draw_sites[1] = client_base + D2CLIENT_HOOK_DRAW_CURSOR_2_OFFSET;
     draw_sites[2] = client_base + D2CLIENT_HOOK_DRAW_CURSOR_3_OFFSET;
@@ -512,7 +549,8 @@ int inventory_qol_init(const D2ModConfig *options)
     draw_sites[4] = client_base + D2CLIENT_HOOK_DRAW_CURSOR_5_OFFSET;
     draw_sites[5] = client_base + D2CLIENT_HOOK_DRAW_CURSOR_6_OFFSET;
     if (!call_target_matches(inventory_site, original) ||
-        !call_target_matches(stash_site, original))
+        !call_target_matches(stash_site, original) ||
+        !call_target_matches(cube_site, original))
         return 0;
     for (i = 0; i < 6; ++i) {
         if (!call_target_matches(
@@ -553,6 +591,9 @@ int inventory_qol_init(const D2ModConfig *options)
     FlushInstructionCache(GetCurrentProcess(), stash_site, 5);
     VirtualProtect(stash_site, 5, old_stash, &unused);
     VirtualProtect(inventory_site, 5, old_inventory, &unused);
+
+    if (!patch_call(cube_site, inventory_click_hook))
+        return 0;
 
     for (i = 0; i < 6; ++i) {
         if (!patch_call(draw_sites[i], cursor_draw_hook))
