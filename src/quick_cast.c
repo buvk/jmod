@@ -19,20 +19,33 @@ static int is_skill_key(WPARAM key)
 {
     HMODULE client = GetModuleHandleA("D2Client.dll");
     const BYTE *bindings;
+    const DWORD *skill_hotkeys;
     unsigned i;
     if (!client || key > 0xff)
         return 0;
     bindings = (const BYTE *)client + D2CLIENT_KEY_BINDINGS_OFFSET;
+    skill_hotkeys = (const DWORD *)((const BYTE *)client +
+                                    D2CLIENT_SKILL_HOTKEYS_OFFSET);
     for (i = 0; i < D2CLIENT_KEY_BINDING_COUNT; ++i) {
         const BYTE *entry = bindings + i * D2CLIENT_KEY_BINDING_STRIDE;
         DWORD action = *(const DWORD *)(entry +
             D2CLIENT_KEY_BINDING_ACTION_OFFSET);
         WORD bound_key = *(const WORD *)(entry +
             D2CLIENT_KEY_BINDING_KEY_OFFSET);
-        if (((action >= D2ACTION_SKILL_RANGE1_FIRST &&
-              action <= D2ACTION_SKILL_RANGE1_LAST) ||
-             (action >= D2ACTION_SKILL_RANGE2_FIRST &&
-              action <= D2ACTION_SKILL_RANGE2_LAST)) && bound_key == key)
+        unsigned slot;
+        if (bound_key != key)
+            continue;
+        if (action >= D2ACTION_SKILL_RANGE1_FIRST &&
+            action <= D2ACTION_SKILL_RANGE1_LAST) {
+            slot = action - D2ACTION_SKILL_RANGE1_FIRST;
+        } else if (action >= D2ACTION_SKILL_RANGE2_FIRST &&
+                   action <= D2ACTION_SKILL_RANGE2_LAST) {
+            slot = 8u + action - D2ACTION_SKILL_RANGE2_FIRST;
+        } else {
+            continue;
+        }
+        if (slot < D2CLIENT_SKILL_HOTKEY_COUNT &&
+            skill_hotkeys[slot] != D2CLIENT_SKILL_HOTKEY_UNASSIGNED)
             return 1;
     }
     return 0;

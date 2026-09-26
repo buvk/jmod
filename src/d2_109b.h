@@ -11,6 +11,8 @@
 #define D2CLIENT_TARGET_ID_OFFSET                  0x116dd0u
 #define D2CLIENT_TARGET_REFRESH_OFFSET             0x116dd4u
 #define D2CLIENT_KEY_BINDINGS_OFFSET               0x11e128u
+/* Runtime skill IDs in hotkey order (0-15); unassigned entries are -1. */
+#define D2CLIENT_SKILL_HOTKEYS_OFFSET              0x12503cu
 #define D2CLIENT_ITEM_LABELS_OFFSET                0x122490u
 #define D2CLIENT_ITEM_LABEL_COUNT_OFFSET           0x124890u
 #define D2CLIENT_ITEM_LABEL_RENDER_FLAG_OFFSET     0x125a68u
@@ -74,6 +76,8 @@
 #define D2CLIENT_KEY_BINDING_STRIDE                10u
 #define D2CLIENT_KEY_BINDING_ACTION_OFFSET         0u
 #define D2CLIENT_KEY_BINDING_KEY_OFFSET            4u
+#define D2CLIENT_SKILL_HOTKEY_COUNT                16u
+#define D2CLIENT_SKILL_HOTKEY_UNASSIGNED            0xffffffffu
 #define D2ACTION_SHOW_ITEMS                        37u
 #define D2ACTION_SKILL_RANGE1_FIRST                14u
 #define D2ACTION_SKILL_RANGE1_LAST                 21u
