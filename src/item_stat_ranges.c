@@ -2,8 +2,10 @@
 #include <windows.h>
 #include <limits.h>
 #include <string.h>
+#include <wchar.h>
 #include "item_stat_ranges.h"
 #include "d2_109b.h"
+#include "armor_defense_bounds.h"
 
 /* 1.09b UniqueItems.bin is 0xE4 bytes. The ten property slots begin at
    +0x44 and are the compiled prop/param/min/max columns from UniqueItems.txt. */
@@ -40,6 +42,8 @@
 
 #define D2ITEM_QUALITY_SET                5
 #define D2ITEM_QUALITY_UNIQUE             7
+#define D2ITEM_QUALITY_SUPERIOR           3
+#define D2ITEM_FLAG_ETHEREAL              0x400000u
 
 /* Properties.txt row ids in the exact 244-row 1.09b property table. */
 #define D2PROP_DAMAGE_PERCENT              29u
@@ -73,8 +77,10 @@
 #define D2PROP_CHARGED_SKILL               243u
 
 /* Exact 1.09b ItemStatCost ids used by multi-slot/multi-stat properties. */
+#define D2STAT_ITEM_ARMOR_PERCENT          16u
 #define D2STAT_ITEM_MAXDAMAGE_PERCENT      17u
 #define D2STAT_ITEM_MINDAMAGE_PERCENT      18u
+#define D2STAT_ARMOR_CLASS                31u
 #define D2STAT_FIRE_RESIST                 39u
 #define D2STAT_MAX_FIRE_RESIST             40u
 #define D2STAT_LIGHT_RESIST                41u
@@ -89,12 +95,22 @@
 #define D2STAT_SINGLE_SKILL10             187u
 #define D2STAT_SKILL_TAB1                 188u
 #define D2STAT_SKILL_TAB6                 193u
+#define D2STAT_ITEM_NUMSOCKETS            194u
 
 static BYTE *tooltip_continue;
 static void *tooltip_item;
 static DWORD tooltip_desc;
 static WCHAR *tooltip_output;
 static DWORD tooltip_return;
+static void *item_tooltip_item;
+static WCHAR *item_tooltip_output;
+static DWORD item_tooltip_capacity;
+static DWORD item_tooltip_return;
+static BYTE *item_tooltip_continue;
+static void *defense_line_item;
+static WCHAR *defense_line_output;
+static DWORD defense_line_return;
+static BYTE *defense_line_continue;
 static BYTE *client_base;
 static BYTE *common_base;
 
@@ -107,8 +123,12 @@ static const BYTE *(__stdcall *get_set_record)(int);
 static WORD (__stdcall *get_auto_affix)(const void *);
 static WORD (__stdcall *get_prefix_id)(const void *, int);
 static WORD (__stdcall *get_suffix_id)(const void *, int);
+static int (__stdcall *get_unit_stat)(const void *, DWORD);
+static int (__stdcall *check_item_flag)(const void *, DWORD, int, const char *);
 
 static void __attribute__((naked)) tooltip_after(void);
+static void __attribute__((naked)) item_tooltip_after(void);
+static void __attribute__((naked)) defense_line_after(void);
 
 typedef struct RangeAccumulator {
     LONGLONG minimum;
@@ -369,8 +389,51 @@ static void add_set_base_properties(RangeAccumulator *range, const void *item,
         add_property_slots(range, record, property_offset,
                            D2SET_BASE_PROPERTY_COUNT,
                            D2SET_PROPERTY_STRIDE, stat);
+
+        /* Conditional member bonuses are shown in the set tooltip, but
+           CodeA-E are separate tiers. Only infer a range when exactly one
+           conditional slot can produce the line and no intrinsic source
+           already matched it. Tal's belt MF is CodeC (10-15). */
+        if (!range->matched) {
+            RangeAccumulator conditional;
+            unsigned i, matches = 0;
+
+            ZeroMemory(&conditional, sizeof(conditional));
+            for (i = D2SET_BASE_PROPERTY_COUNT;
+                 i < D2SET_PROPERTIES_PER_MEMBER; ++i) {
+                RangeAccumulator candidate;
+
+                ZeroMemory(&candidate, sizeof(candidate));
+                add_property(&candidate, record + property_offset +
+                             i * D2SET_PROPERTY_STRIDE, stat);
+                if (candidate.matched && candidate.variable) {
+                    conditional = candidate;
+                    ++matches;
+                }
+            }
+            if (matches == 1)
+                *range = conditional;
+        }
         return;
     }
+}
+
+static void collect_item_range(RangeAccumulator *range, const void *item,
+                               DWORD stat)
+{
+    ZeroMemory(range, sizeof(*range));
+    if (!item || stat == 0xffffffffu ||
+        *(const DWORD *)((const BYTE *)item + D2UNIT_TYPE_OFFSET) !=
+            D2UNIT_ITEM)
+        return;
+
+    /* Automagic/prefix/suffix records are the authoritative roll source for
+       magic/rare/crafted affixes, and automagic can also exist on other item
+       qualities. Fixed contributors are intentionally included so a line fed
+       by fixed + variable sources gets the true total possible range. */
+    add_item_affixes(range, item, stat);
+    add_unique_properties(range, item, stat);
+    add_set_base_properties(range, item, stat);
 }
 
 static int find_item_range(const void *item, DWORD stat,
@@ -378,20 +441,9 @@ static int find_item_range(const void *item, DWORD stat,
 {
     RangeAccumulator range;
 
-    if (!item || !minimum || !maximum || stat == 0xffffffffu ||
-        *(const DWORD *)((const BYTE *)item + D2UNIT_TYPE_OFFSET) !=
-            D2UNIT_ITEM)
+    if (!minimum || !maximum)
         return 0;
-
-    ZeroMemory(&range, sizeof(range));
-
-    /* Automagic/prefix/suffix records are the authoritative roll source for
-       magic/rare/crafted affixes, and automagic can also exist on other item
-       qualities. Fixed contributors are intentionally included so a line fed
-       by fixed + variable sources gets the true total possible range. */
-    add_item_affixes(&range, item, stat);
-    add_unique_properties(&range, item, stat);
-    add_set_base_properties(&range, item, stat);
+    collect_item_range(&range, item, stat);
 
     if (!range.matched || !range.variable || range.ambiguous_layer ||
         range.minimum == range.maximum ||
@@ -426,6 +478,288 @@ static void append_current_range(void)
     wsprintfW(suffix, L" \x00ff" L"c:[%d - %d]\x00ff" L"c3",
               minimum, maximum);
     lstrcatW(tooltip_output, suffix);
+}
+
+/* D2Client+0x3EAB0 assembles the armor's Defense line in its own output
+   buffer. The bracket on this line must describe final item Defense. */
+static int line_contains(const WCHAR *line, const WCHAR *end,
+                         const WCHAR *needle)
+{
+    int size = lstrlenW(needle);
+    const WCHAR *p;
+
+    for (p = line; p + size <= end; ++p) {
+        if (wcsncmp(p, needle, size) == 0)
+            return 1;
+    }
+    return 0;
+}
+
+static void insert_tooltip_suffix(WCHAR *output, DWORD capacity,
+                                  WCHAR *end, const WCHAR *suffix,
+                                  int total_length)
+{
+    int suffix_length = lstrlenW(suffix);
+
+    if ((DWORD)(total_length + suffix_length) >= capacity ||
+        suffix_length > 48)
+        return;
+    MoveMemory(end + suffix_length, end,
+               (total_length - (end - output) + 1) *
+               sizeof(WCHAR));
+    CopyMemory(end, suffix, suffix_length * sizeof(WCHAR));
+}
+
+static int read_defense_value(const WCHAR *start, const WCHAR *end, int *value)
+{
+    int n = 0;
+    int found = 0;
+
+    while (start < end) {
+        if (*start == 0xff && end - start >= 3 && start[1] == L'c') {
+            start += 3;
+        } else if (*start == L' ' || *start == L'\t') {
+            ++start;
+        } else {
+            break;
+        }
+    }
+    while (start < end && *start >= L'0' && *start <= L'9') {
+        found = 1;
+        n = n * 10 + *start++ - L'0';
+        if (n > 1000000)
+            return 0;
+    }
+    *value = n;
+    return found;
+}
+
+static int find_defense_bounds(const void *item,
+                               const ArmorDefenseBounds *armor,
+                               int displayed, int *minimum, int *maximum)
+{
+    RangeAccumulator percent, flat;
+    LONGLONG base_low, base_high, lower, upper;
+    int current_percent;
+
+    collect_item_range(&percent, item, D2STAT_ITEM_ARMOR_PERCENT);
+    collect_item_range(&flat, item, D2STAT_ARMOR_CLASS);
+    if (percent.ambiguous_layer || flat.ambiguous_layer ||
+        /* Socketed modifiers are not represented by the item's own record. */
+        get_unit_stat(item, D2STAT_ITEM_NUMSOCKETS) != 0)
+        return 0;
+
+    current_percent = get_unit_stat(item, D2STAT_ITEM_ARMOR_PERCENT);
+    if (percent.matched) {
+        if (current_percent < percent.minimum ||
+            current_percent > percent.maximum)
+            return 0;
+    } else if (current_percent != 0) {
+        /* A superior item's innate ED is fixed; other unexplained ED can
+           come from sockets or an effect that changes the base roll. */
+        if (get_item_quality(item) != D2ITEM_QUALITY_SUPERIOR)
+            return 0;
+        percent.minimum = percent.maximum = current_percent;
+    }
+    if (percent.minimum < -99 || percent.maximum > 1000 ||
+        flat.minimum < -10000 || flat.maximum > 10000)
+        return 0;
+
+    /* Armor spawned with enhanced defense rolls (maxac + 1). Ethereal
+       multiplies that base before percentage ED; flat defense is added last.
+       Without ED, the ordinary armor.txt base still has a random roll. */
+    base_low = percent.matched || current_percent != 0 ?
+        armor->maximum + 1 : armor->minimum;
+    base_high = percent.matched || current_percent != 0 ?
+        armor->maximum + 1 : armor->maximum;
+    if (check_item_flag(item, D2ITEM_FLAG_ETHEREAL, 0, "item_stat_ranges.c")) {
+        base_low = base_low * 3 / 2;
+        base_high = base_high * 3 / 2;
+    }
+    lower = base_low * (100 + percent.minimum) / 100 + flat.minimum;
+    upper = base_high * (100 + percent.maximum) / 100 + flat.maximum;
+
+    /* Unknown modifiers and legacy items can have different Defense. A
+       bracket that excludes the actual number is worse than no bracket. */
+    if (lower < 0 || upper > INT_MAX || lower >= upper ||
+        displayed < lower || displayed > upper)
+        return 0;
+    *minimum = (int)lower;
+    *maximum = (int)upper;
+    return 1;
+}
+
+static void append_item_base_ranges(const void *item, WCHAR *output,
+                                    DWORD capacity, int defense_line)
+{
+    const BYTE *item_text;
+    DWORD code;
+    unsigned i;
+    WCHAR *line;
+    WCHAR *end;
+    WCHAR suffix[56];
+    int total_length;
+    int defense_index = -1;
+    int displayed_defense, defense_minimum, defense_maximum;
+    int ed_minimum, ed_maximum;
+
+    if (!item || !output ||
+        capacity < 32 || capacity > 4096 ||
+        *(const DWORD *)((const BYTE *)item +
+                         D2UNIT_TYPE_OFFSET) != D2UNIT_ITEM)
+        return;
+    item_text = get_item_text(*(const DWORD *)((const BYTE *)item +
+                                       D2UNIT_CLASS_ID_OFFSET));
+    if (!item_text)
+        return;
+    code = *(const DWORD *)(item_text + D2ITEMTXT_CODE_OFFSET) &
+           D2ITEM_CODE_3CHAR_MASK;
+    if (defense_line) {
+        for (i = 0; i < sizeof(armor_defense_bounds) /
+                        sizeof(armor_defense_bounds[0]); ++i)
+            if (armor_defense_bounds[i].code == code) {
+                defense_index = (int)i;
+                break;
+            }
+        if (defense_index < 0)
+            return;
+    } else if (code != ('j' | ('e' << 8) | ('w' << 16))) {
+        return;
+    }
+
+    total_length = lstrlenW(output);
+    if (total_length < 0 || (DWORD)total_length >= capacity)
+        return;
+    for (line = output; *line; line = end + (*end == L'\n')) {
+        WCHAR *visible = line;
+
+        end = line;
+        while (*end && *end != L'\n')
+            ++end;
+        /* Item colors are embedded as \xff c N before the visible text. */
+        while (visible + 3 <= end && visible[0] == 0xff &&
+               visible[1] == L'c')
+            visible += 3;
+        /* The 1.09b English tooltip uses "Defense:" for the armor value. */
+        if (defense_line && defense_index >= 0) {
+            const WCHAR *label;
+            for (label = visible; label + 8 <= end; ++label) {
+                if (wcsncmp(label, L"Defense:", 8) != 0)
+                    continue;
+                if (read_defense_value(label + 8, end, &displayed_defense) &&
+                    find_defense_bounds(item,
+                        &armor_defense_bounds[defense_index],
+                        displayed_defense, &defense_minimum,
+                        &defense_maximum)) {
+                    wsprintfW(suffix,
+                              L" \x00ff" L"c:[%d - %d]\x00ff" L"c0",
+                              defense_minimum, defense_maximum);
+                    if (end - line + lstrlenW(suffix) <= 220)
+                        insert_tooltip_suffix(output, capacity, end, suffix,
+                                              total_length);
+                }
+                return;
+            }
+        }
+        /* ED on a jewel can be assembled outside the stat-line formatter.
+           Append its affix roll once, regardless of which path made the line. */
+        if (!defense_line &&
+            line_contains(visible, end, L"Enhanced Damage") &&
+            !line_contains(visible, end, L"[")) {
+            if (find_item_range(item,
+                                D2STAT_ITEM_MAXDAMAGE_PERCENT,
+                                &ed_minimum, &ed_maximum) ||
+                find_item_range(item,
+                                D2STAT_ITEM_MINDAMAGE_PERCENT,
+                                &ed_minimum, &ed_maximum)) {
+                wsprintfW(suffix, L" \x00ff" L"c:[%d - %d]\x00ff" L"c0",
+                          ed_minimum, ed_maximum);
+                if (end - line + lstrlenW(suffix) <= 220)
+                    insert_tooltip_suffix(output, capacity, end, suffix,
+                                          total_length);
+            }
+            return;
+        }
+        if (!*end)
+            break;
+    }
+}
+
+static void append_item_modifier_ranges(void)
+{
+    append_item_base_ranges(item_tooltip_item, item_tooltip_output,
+                            item_tooltip_capacity, 0);
+}
+
+static void append_defense_line_range(void)
+{
+    /* The two callers allocate at least 0x200 WCHARs for this line. Use a
+       smaller limit so insertion cannot approach either buffer boundary. */
+    append_item_base_ranges(defense_line_item, defense_line_output, 256, 1);
+}
+
+/* This function receives ECX=item, EDX=output and its first stack argument
+   is the WCHAR output capacity. Its original prologue is six bytes. */
+static void __attribute__((naked)) item_tooltip_hook(void)
+{
+    __asm__ __volatile__(
+        "movl %%ecx, %0\n\t"
+        "movl %%edx, %1\n\t"
+        "movl 4(%%esp), %%eax\n\t"
+        "movl %%eax, %2\n\t"
+        "movl (%%esp), %%eax\n\t"
+        "movl %%eax, %3\n\t"
+        "movl $%P4, (%%esp)\n\t"
+        "subl $0x4ec, %%esp\n\t"
+        "jmp *%5\n\t"
+        : "=m" (item_tooltip_item), "=m" (item_tooltip_output),
+          "=m" (item_tooltip_capacity), "=m" (item_tooltip_return)
+        : "i" (item_tooltip_after), "m" (item_tooltip_continue)
+        : "eax");
+}
+
+static void __attribute__((naked)) item_tooltip_after(void)
+{
+    __asm__ __volatile__(
+        "pushfl\n\t"
+        "pushal\n\t"
+        "call %P0\n\t"
+        "popal\n\t"
+        "popfl\n\t"
+        "jmp *%1\n\t"
+        : : "i" (append_item_modifier_ranges), "m" (item_tooltip_return));
+}
+
+/* The five displaced bytes of D2Client+0x3EAB0 are sub esp, 0x30;
+   push ebx; push ebp. ECX is the item and EDX the Defense line buffer. */
+static void __attribute__((naked)) defense_line_hook(void)
+{
+    __asm__ __volatile__(
+        "movl %%ecx, %0\n\t"
+        "movl %%edx, %1\n\t"
+        "movl (%%esp), %%eax\n\t"
+        "movl %%eax, %2\n\t"
+        "movl $%P3, (%%esp)\n\t"
+        "subl $0x30, %%esp\n\t"
+        "pushl %%ebx\n\t"
+        "pushl %%ebp\n\t"
+        "jmp *%4\n\t"
+        : "=m" (defense_line_item), "=m" (defense_line_output),
+          "=m" (defense_line_return)
+        : "i" (defense_line_after), "m" (defense_line_continue)
+        : "eax");
+}
+
+static void __attribute__((naked)) defense_line_after(void)
+{
+    __asm__ __volatile__(
+        "pushfl\n\t"
+        "pushal\n\t"
+        "call %P0\n\t"
+        "popal\n\t"
+        "popfl\n\t"
+        "jmp *%1\n\t"
+        : : "i" (append_defense_line_range), "m" (defense_line_return));
 }
 
 /* Replace the formatter's return address, then execute its displaced
@@ -464,6 +798,8 @@ static void __attribute__((naked)) tooltip_after(void)
 int item_stat_ranges_init(void)
 {
     BYTE *site;
+    BYTE *armor_site;
+    BYTE *defense_site;
     DWORD old_protection, unused;
     HMODULE common;
     union { FARPROC raw; int (__stdcall *typed)(const void *); } quality;
@@ -475,7 +811,14 @@ int item_stat_ranges_init(void)
     union { FARPROC raw; WORD (__stdcall *typed)(const void *); } auto_affix;
     union { FARPROC raw; WORD (__stdcall *typed)(const void *, int); } prefix;
     union { FARPROC raw; WORD (__stdcall *typed)(const void *, int); } suffix;
+    union { FARPROC raw; int (__stdcall *typed)(const void *, DWORD); } unit_stat;
+    union { FARPROC raw; int (__stdcall *typed)(const void *, DWORD,
+                                              int, const char *); } item_flag;
     static const BYTE expected[] = { 0x81, 0xec, 0x30, 0x02, 0x00, 0x00 };
+    static const BYTE armor_expected[] = {
+        0x81, 0xec, 0xec, 0x04, 0x00, 0x00
+    };
+    static const BYTE defense_expected[] = { 0x83, 0xec, 0x30, 0x53, 0x55 };
 
     client_base = (BYTE *)GetModuleHandleA("D2Client.dll");
     common = GetModuleHandleA("D2Common.dll");
@@ -485,6 +828,12 @@ int item_stat_ranges_init(void)
 
     site = client_base + D2CLIENT_FN_TOOLTIP_STAT_LINE_OFFSET;
     if (memcmp(site, expected, sizeof(expected)) != 0)
+        return 0;
+    armor_site = client_base + D2CLIENT_FN_ITEM_TOOLTIP_OFFSET;
+    if (memcmp(armor_site, armor_expected, sizeof(armor_expected)) != 0)
+        return 0;
+    defense_site = client_base + D2CLIENT_FN_DEFENSE_LINE_OFFSET;
+    if (memcmp(defense_site, defense_expected, sizeof(defense_expected)) != 0)
         return 0;
 
     quality.raw = GetProcAddress(common,
@@ -505,9 +854,14 @@ int item_stat_ranges_init(void)
         MAKEINTRESOURCEA(D2COMMON_GET_PREFIX_ID_ORDINAL));
     suffix.raw = GetProcAddress(common,
         MAKEINTRESOURCEA(D2COMMON_GET_SUFFIX_ID_ORDINAL));
+    unit_stat.raw = GetProcAddress(common,
+        MAKEINTRESOURCEA(D2COMMON_GET_UNIT_STAT_ORDINAL));
+    item_flag.raw = GetProcAddress(common,
+        MAKEINTRESOURCEA(D2COMMON_CHECK_ITEM_FLAG_ORDINAL));
     if (!quality.raw || !file_index.raw || !item_text.raw ||
         !affix_record.raw || !unique_record.raw || !set_record.raw ||
-        !auto_affix.raw || !prefix.raw || !suffix.raw)
+        !auto_affix.raw || !prefix.raw || !suffix.raw ||
+        !unit_stat.raw || !item_flag.raw)
         return 0;
 
     get_item_quality = quality.typed;
@@ -519,6 +873,8 @@ int item_stat_ranges_init(void)
     get_auto_affix = auto_affix.typed;
     get_prefix_id = prefix.typed;
     get_suffix_id = suffix.typed;
+    get_unit_stat = unit_stat.typed;
+    check_item_flag = item_flag.typed;
 
     tooltip_continue = site + sizeof(expected);
     if (!VirtualProtect(site, sizeof(expected), PAGE_EXECUTE_READWRITE,
@@ -530,5 +886,30 @@ int item_stat_ranges_init(void)
     site[5] = 0x90;
     FlushInstructionCache(GetCurrentProcess(), site, sizeof(expected));
     VirtualProtect(site, sizeof(expected), old_protection, &unused);
+
+    item_tooltip_continue = armor_site + sizeof(armor_expected);
+    if (!VirtualProtect(armor_site, sizeof(armor_expected),
+                        PAGE_EXECUTE_READWRITE, &old_protection))
+        return 1; /* Stat-line ranges are still installed. */
+    armor_site[0] = 0xe9;
+    *(DWORD *)(armor_site + 1) =
+        (DWORD)((BYTE *)item_tooltip_hook - (armor_site + 5));
+    armor_site[5] = 0x90;
+    FlushInstructionCache(GetCurrentProcess(), armor_site,
+                          sizeof(armor_expected));
+    VirtualProtect(armor_site, sizeof(armor_expected), old_protection,
+                   &unused);
+
+    defense_line_continue = defense_site + sizeof(defense_expected);
+    if (!VirtualProtect(defense_site, sizeof(defense_expected),
+                        PAGE_EXECUTE_READWRITE, &old_protection))
+        return 1;
+    defense_site[0] = 0xe9;
+    *(DWORD *)(defense_site + 1) =
+        (DWORD)((BYTE *)defense_line_hook - (defense_site + 5));
+    FlushInstructionCache(GetCurrentProcess(), defense_site,
+                          sizeof(defense_expected));
+    VirtualProtect(defense_site, sizeof(defense_expected), old_protection,
+                   &unused);
     return 1;
 }
