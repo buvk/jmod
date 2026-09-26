@@ -60,6 +60,32 @@ static int ground_label_contains(BYTE *client, const void *selected)
     return 0;
 }
 
+/* A label entry can outlive the ground unit it pointed at for a frame.
+   Validate a cached label pointer against D2Client's live item-unit table
+   before dereferencing or selecting it. Pointer comparison itself is safe. */
+static int live_item_unit(BYTE *client, const void *candidate)
+{
+    const BYTE *const *items;
+    const BYTE *unit;
+    unsigned bucket, visited = 0;
+
+    if (!client || !candidate)
+        return 0;
+
+    items = (const BYTE *const *)(client + D2CLIENT_UNIT_HASH_TABLES_OFFSET +
+        D2UNIT_ITEM * D2CLIENT_UNIT_HASH_BUCKET_COUNT * sizeof(void *));
+    for (bucket = 0; bucket < D2CLIENT_UNIT_HASH_BUCKET_COUNT; ++bucket) {
+        for (unit = items[bucket]; unit && visited++ < 4096;
+             unit = *(const BYTE *const *)(unit + D2UNIT_HASH_NEXT_OFFSET)) {
+            if (unit == candidate)
+                return 1;
+        }
+        if (visited >= 4096)
+            break;
+    }
+    return 0;
+}
+
 /* The game can recalculate its world target between drawing a label and
    handling a click. Use the hovered label's unit when clicking its text. */
 static void select_clicked_label(BYTE *client)
@@ -78,7 +104,7 @@ static void select_clicked_label(BYTE *client)
         const BYTE *label = labels + (i - 1) * D2CLIENT_ITEM_LABEL_STRIDE;
         void *item = *(void *const *)(label + D2CLIENT_ITEM_LABEL_UNIT_OFFSET);
         if (item &&
-            *(const DWORD *)item == D2UNIT_ITEM &&
+            live_item_unit(client, item) &&
             *(const DWORD *)(label + D2CLIENT_ITEM_LABEL_STATE_OFFSET) ==
             D2CLIENT_ITEM_LABEL_GROUND_STATE &&
             x >= *(const int *)(label + D2CLIENT_ITEM_LABEL_LEFT_OFFSET) &&

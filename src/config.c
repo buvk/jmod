@@ -9,6 +9,7 @@ static void set_defaults(D2ModConfig *config)
     config->auto_gold_pickup = 1;
     config->gold_pickup_in_town = 0;
     config->rune_color = 1;
+    config->item_stat_ranges = 1;
     config->gold_pickup_range = D2ITEM_IMMEDIATE_PICKUP_MAX_DISTANCE;
     config->ctrl_click_actions = 0;
     config->loot_filter_enabled = 0;
@@ -47,6 +48,7 @@ void read_options(HMODULE module, D2ModConfig *config)
     config->auto_gold_pickup = GetPrivateProfileIntA("Mods", "AutoGoldPickup", 1, path) != 0;
     config->gold_pickup_in_town = GetPrivateProfileIntA("Mods", "GoldPickupInTown", 0, path) != 0;
     config->rune_color = GetPrivateProfileIntA("Mods", "RuneColor", 1, path) != 0;
+    config->item_stat_ranges = GetPrivateProfileIntA("Mods", "ItemStatRanges", 1, path) != 0;
     config->gold_pickup_range = GetPrivateProfileIntA("Mods", "GoldPickupRange",
         D2ITEM_IMMEDIATE_PICKUP_MAX_DISTANCE, path);
     if (config->gold_pickup_range < 1)

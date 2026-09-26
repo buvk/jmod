@@ -11,6 +11,7 @@ typedef struct D2ModConfig {
     int auto_gold_pickup;
     int gold_pickup_in_town;
     int rune_color;
+    int item_stat_ranges;
     int gold_pickup_range;
     int ctrl_click_actions;
     int loot_filter_enabled;

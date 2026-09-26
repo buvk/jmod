@@ -10,6 +10,7 @@
 #include "loot_filter.h"
 #include "d2_109b.h"
 #include "ctrl_click_actions.h"
+#include "item_stat_ranges.h"
 
 static HMODULE module;
 static HHOOK message_hook;
@@ -102,6 +103,8 @@ static DWORD WINAPI start_hook(void *unused)
         config.rune_color = 0;
     quick_cast_init(config.quick_cast);
     auto_gold_pickup_init(&config);
+    if (config.item_stat_ranges && !item_stat_ranges_init())
+        config.item_stat_ranges = 0;
     if (config.ctrl_click_actions && !ctrl_click_actions_init(&config))
         config.ctrl_click_actions = 0;
     if (!loot_filter_init(&config, module))
